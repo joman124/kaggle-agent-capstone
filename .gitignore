@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Generated content (draft posts, often unpublished/personal)
+*.docx
+
 # Python
 __pycache__/
 *.pyc

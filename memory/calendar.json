@@ -1,0 +1,37 @@
+[
+  {
+    "day": "Day 1",
+    "pillar": "Clinical Window",
+    "platform": "linkedin",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 2",
+    "pillar": "The Thesis",
+    "platform": "substack",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 3",
+    "pillar": "Personal",
+    "platform": "linkedin",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 4",
+    "pillar": "Applied Philosophy",
+    "platform": "linkedin",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 5",
+    "pillar": "Current Events",
+    "platform": "substack",
+    "topic": "React as a clinician to the layoff wave",
+    "source_headline": "AI layoffs hit white-collar workers"
+  }
+]

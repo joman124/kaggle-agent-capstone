@@ -17,11 +17,13 @@ import time
 from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT
 from guardrails import run_guardrails
 from gemini_client import generate
+from doc_output import append_to_doc
 
 # Writer defaults to a pro-tier model regardless of GEMINI_MODEL (used by
 # other agents); override with GEMINI_WRITER_MODEL in .env if needed.
 MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
+LINKEDIN_DOC = "LinkedIn Posts.docx"
 
 
 def write_linkedin_post(topic: str) -> str:
@@ -61,9 +63,9 @@ if __name__ == "__main__":
         if i > 1:
             time.sleep(20)
         post = write_linkedin_post(topic)
-        print(post)
-        print()
         g = run_guardrails(post)
+        append_to_doc(LINKEDIN_DOC, topic, post)
+        print(f"[SAVED] Appended to '{LINKEDIN_DOC}'")
         if g["clean"]:
             print("[GUARDRAILS] Clean. No AI tells or banned phrases detected.")
         else:

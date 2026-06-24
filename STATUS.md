@@ -1,4 +1,4 @@
-# Status — as of Step 3 (June 24, 2026)
+# Status — as of Step 4 (June 24, 2026)
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
@@ -27,11 +27,32 @@
 - Verified output: a real in-voice post generated and passed guardrails clean
   (under the old `step1_writer.py`; re-verify Writer and Scout under the new
   module layout next time the API key is available).
+- `.env.example` added, documenting `GEMINI_API_KEY`, `GEMINI_MODEL`, and
+  `GEMINI_WRITER_MODEL` with no real values. This does not give Claude a
+  working key in the dev sandbox; Scout and Writer still need John's real
+  `.env` to verify their actual Gemini calls.
+- Writer now saves posts via `doc_output.py` (`append_to_doc()`) into
+  `LinkedIn Posts.docx` instead of printing markdown, since John reviews
+  from the docx. Creates the doc with a title heading on first run, appends
+  a dated H2 section per post after that. Verified in an isolated venv
+  (create + two appends, no overwrite). `*.docx` is gitignored.
+- **Step 4 done.** `agents/strategist.py`: pure logic, no Gemini calls.
+  Reads `memory/content_history.json`, computes a rolling 30-day pillar
+  distribution, writes it to `memory/pillar_tracker.json`, ranks pillars
+  least-used-first, applies a fixed platform cadence (3 LinkedIn :
+  2 Substack per 5-day plan, deliberately not overridden by Scout's
+  suggested_platform so Strategist keeps platform-balance control),
+  optionally matches a Scout briefing topic to each day's pillar, and
+  writes the plan to `memory/calendar.json`. Verified locally (no API key
+  needed): empty history produces all 5 pillars exactly once with no
+  repeats; a mock Scout briefing's matching day picks up that topic's
+  angle/headline while platform still follows Strategist's own cadence.
+  `memory/` seeded with empty/zeroed JSON and committed.
 
 ## Not done
-- Steps 4-12 (see BUILD_PLAN.md): Strategist, Orchestrator, full guardrails,
-  Analyst, observability, Streamlit UI, deploy, writeup, video, submit.
-- No memory/state JSON files yet (Step 4).
+- Steps 5-12 (see BUILD_PLAN.md): Orchestrator, full guardrails, Analyst,
+  observability, Streamlit UI, deploy, writeup, video, submit.
+- `memory/engagement_data.json` not created yet (Step 7).
 - LinkedIn account will be linked by John. Substack page created
   (`drjohnmansoor`) but no real posts published yet on either platform.
 - $10 API budget set; usage negligible so far.
@@ -60,9 +81,9 @@
   error showing the raw output if the model still doesn't return valid JSON.
 
 ## Immediate next step
-Build the Strategist agent (Step 4): `agents/strategist.py` + `memory/`
-JSON state. Reads content history and pillar distribution, consumes a
-Scout briefing, outputs a balanced 5-day plan.
+Build the Orchestrator (Step 5): `agents/orchestrator.py`. Routes natural-
+language requests to agents, wiring Scout -> Strategist -> Writer for
+"what should I publish this week?" Test the full pipeline end to end.
 
 ## Voice feedback still pending
 John has not yet given line-level feedback on whether the generated voice fully

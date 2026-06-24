@@ -6,12 +6,16 @@ Each step maps to a course concept for the capstone writeup.
 ## Phase 1 — Foundation [DONE]
 
 **Step 1: Writer agent (single-agent prototype).** DONE.
-- `step1_writer.py` generates LinkedIn posts in John's voice.
+- `step1_writer.py` (since promoted to `agents/writer.py`) generates
+  LinkedIn posts in John's voice.
 - Loads `voice_profile.py` (voice + anti-AI-tell layers).
 - First-pass guardrails: banned-phrase scan, em-dash count, curly-quote check,
   negative-parallelism flags.
 - Retry-with-backoff on 503; plain-English errors on quota/model/auth.
-- Model and key read from `.env`. Verified working end to end.
+- Model and key read from `.env` (`.env.example` documents the required vars).
+- Generated posts are appended to `LinkedIn Posts.docx` (via `doc_output.py`)
+  instead of being dumped as console text, since John reviews from the docx.
+  Verified working end to end.
 
 ## Phase 2 — Multi-agent
 
@@ -32,10 +36,16 @@ relevance_score, suggested_angle, suggested_pillar, suggested_platform). Uses
 running it with a real API key: `python -m agents.scout` for trending topics,
 or `python -m agents.scout "AI layoffs"` to focus the search.
 
-**Step 4: Strategist agent.** `agents/strategist.py` + `memory/` JSON. Reads
-content history and pillar distribution; consumes a Scout briefing; outputs a
-5-day plan with pillar balance and platform variety. Test: given empty history,
-produces a balanced week.
+**Step 4: Strategist agent.** [DONE] `agents/strategist.py` + `memory/` JSON
+(`content_history.json`, `pillar_tracker.json`, `calendar.json`, all seeded).
+Pure logic, no Gemini calls. Reads content history, computes a rolling
+30-day pillar distribution, optionally consumes a Scout briefing, and writes
+a 5-day plan (pillar + platform per day) to `memory/calendar.json`. Platform
+follows a fixed cadence pattern (3 LinkedIn : 2 Substack) regardless of what
+Scout suggests, so Strategist keeps control of platform balance. Verified:
+with empty history, `plan_week()` assigns each of the 5 pillars exactly once
+with no repeats; with a mock Scout briefing, a matching day's pillar picks
+up that topic's angle and headline.
 
 **Step 5: Orchestrator.** `agents/orchestrator.py`. Routes natural-language
 requests to agents. Wire Scout -> Strategist -> Writer for "what should I

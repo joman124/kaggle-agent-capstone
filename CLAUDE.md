@@ -54,20 +54,23 @@ governs. The banned-phrase list and guardrails enforce it mechanically.
 
 ## Current state
 
-Steps 1-3 of 12 are done. The Writer agent (`agents/writer.py`) generates
-LinkedIn posts in John's voice and passes first-pass guardrails
-(`guardrails.py`). A real test post came through clean under the original
-single-file prototype, which has since been retired and folded into
-`agents/writer.py`. The Scout agent (`agents/scout.py`) finds trending topics
-via Gemini + Google Search grounding and returns a JSON briefing. Both agents
-share retry/error handling through `gemini_client.py`. Steps 4-12
-(Strategist, Analyst, Orchestrator, full guardrails, UI, deploy, writeup,
-video) are not built yet. See `BUILD_PLAN.md` for the sequence and
+Steps 1-4 of 12 are done. The Writer agent (`agents/writer.py`) generates
+LinkedIn posts in John's voice, passes first-pass guardrails
+(`guardrails.py`), and saves them to `LinkedIn Posts.docx` via
+`doc_output.py` since John reviews from the docx, not the console. The
+Scout agent (`agents/scout.py`) finds trending topics via Gemini + Google
+Search grounding and returns a JSON briefing. Both agents share retry/error
+handling through `gemini_client.py`. The Strategist agent
+(`agents/strategist.py`) reads `memory/` JSON state, balances pillar
+coverage on a rolling 30-day window, applies a fixed platform cadence, and
+writes a 5-day plan to `memory/calendar.json` -- pure logic, no Gemini
+calls. Steps 5-12 (Orchestrator, full guardrails, Analyst, UI, deploy,
+writeup, video) are not built yet. See `BUILD_PLAN.md` for the sequence and
 `STATUS.md` for exactly where things stand.
 
 ## Working relationship
 
 John engages directly with critique and makes clear decisions. Honest pushback
 is welcomed. Do not pad responses. Build outward — resist over-polishing any
-one step. The highest-value next step is the Strategist agent (Day 3,
-context engineering / memory).
+one step. The highest-value next step is the Orchestrator (Day 5, routing
+Scout -> Strategist -> Writer end to end).
