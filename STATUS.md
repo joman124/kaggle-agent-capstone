@@ -1,4 +1,4 @@
-# Status — as of Step 4 (June 24, 2026)
+# Status — as of Step 5 (June 24, 2026)
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
@@ -48,10 +48,28 @@
   repeats; a mock Scout briefing's matching day picks up that topic's
   angle/headline while platform still follows Strategist's own cadence.
   `memory/` seeded with empty/zeroed JSON and committed.
+- **Step 5 done.** `agents/orchestrator.py`: `route()` classifies a
+  natural-language request into an intent + topic via deterministic
+  keyword matching (no Gemini call) so it is fully unit-tested without an
+  API key. `handle_request()` then runs the matched pipeline. Verified:
+  all 6 routing cases (weekly plan, trending, LinkedIn post + topic,
+  essay + topic, engagement, unrecognized) classify correctly.
+- **Added (not in the original 12-step plan): Substack Specialist agent.**
+  `agents/substack_specialist.py`. Expands a Writer-drafted LinkedIn post
+  into a long-form Substack essay -- goes deeper into the same stories and
+  arguments instead of padding the same paragraph. Shares the Writer's
+  pro-tier model and voice/anti-AI-tell layers; applies the `substack_essay`
+  entry from `PLATFORM_RULES` (800-1500 words, no hashtags, up to 4 em
+  dashes). Saves to `Substack Essays.docx`. The Orchestrator's weekly-plan
+  pipeline runs every Substack-assigned day through it; its own "draft an
+  essay about X" route also goes Writer -> Substack Specialist directly.
+  `guardrails.run_guardrails()` gained a `max_em_dashes` parameter
+  (default 1, the LinkedIn rule) so the essay's looser limit did not need
+  a second guardrail function.
 
 ## Not done
-- Steps 5-12 (see BUILD_PLAN.md): Orchestrator, full guardrails, Analyst,
-  observability, Streamlit UI, deploy, writeup, video, submit.
+- Steps 6-12 (see BUILD_PLAN.md): full guardrails, Analyst, observability,
+  Streamlit UI, deploy, writeup, video, submit.
 - `memory/engagement_data.json` not created yet (Step 7).
 - LinkedIn account will be linked by John. Substack page created
   (`drjohnmansoor`) but no real posts published yet on either platform.
@@ -79,11 +97,20 @@
   Gemini wraps the array in markdown fences or adds commentary despite the
   prompt, `_parse_json_array()` should strip fences but will raise a clear
   error showing the raw output if the model still doesn't return valid JSON.
+- Same caveat for the Orchestrator's pipelines and the Substack Specialist:
+  the routing logic (`route()`) is verified, but the actual Gemini calls
+  inside `handle_request()`'s pipelines and `expand_to_essay()` have not
+  been run end to end yet. Also, `google-genai` and `python-docx` are not
+  installed in the dev sandbox, so only `ast.parse()` syntax checks were
+  possible on the new files, not a real import.
 
 ## Immediate next step
-Build the Orchestrator (Step 5): `agents/orchestrator.py`. Routes natural-
-language requests to agents, wiring Scout -> Strategist -> Writer for
-"what should I publish this week?" Test the full pipeline end to end.
+Run the Orchestrator end to end on your machine with a real `.env`:
+`python -m agents.orchestrator "What should I publish this week?"`. That
+single command now exercises the whole pipeline (Scout, Strategist,
+Writer, Substack Specialist) and is the first time any of Steps 3-5b get
+verified against a real key. After that, Step 6: full guardrails
+(LLM-as-judge voice scoring, length enforcement, revise-and-recheck loop).
 
 ## Voice feedback still pending
 John has not yet given line-level feedback on whether the generated voice fully

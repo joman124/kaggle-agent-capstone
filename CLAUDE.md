@@ -54,23 +54,29 @@ governs. The banned-phrase list and guardrails enforce it mechanically.
 
 ## Current state
 
-Steps 1-4 of 12 are done. The Writer agent (`agents/writer.py`) generates
-LinkedIn posts in John's voice, passes first-pass guardrails
-(`guardrails.py`), and saves them to `LinkedIn Posts.docx` via
-`doc_output.py` since John reviews from the docx, not the console. The
-Scout agent (`agents/scout.py`) finds trending topics via Gemini + Google
-Search grounding and returns a JSON briefing. Both agents share retry/error
-handling through `gemini_client.py`. The Strategist agent
-(`agents/strategist.py`) reads `memory/` JSON state, balances pillar
-coverage on a rolling 30-day window, applies a fixed platform cadence, and
-writes a 5-day plan to `memory/calendar.json` -- pure logic, no Gemini
-calls. Steps 5-12 (Orchestrator, full guardrails, Analyst, UI, deploy,
-writeup, video) are not built yet. See `BUILD_PLAN.md` for the sequence and
-`STATUS.md` for exactly where things stand.
+Steps 1-5 of 12 are done, plus one agent added beyond the original plan.
+The Writer agent (`agents/writer.py`) generates LinkedIn posts in John's
+voice, passes first-pass guardrails (`guardrails.py`), and saves them to
+`LinkedIn Posts.docx` via `doc_output.py` since John reviews from the
+docx, not the console. The Scout agent (`agents/scout.py`) finds trending
+topics via Gemini + Google Search grounding and returns a JSON briefing.
+The Strategist agent (`agents/strategist.py`) reads `memory/` JSON state,
+balances pillar coverage on a rolling 30-day window, applies a fixed
+platform cadence, and writes a 5-day plan to `memory/calendar.json` --
+pure logic, no Gemini calls. The Substack Specialist agent
+(`agents/substack_specialist.py`) expands a Writer-drafted LinkedIn post
+into a long-form Substack essay, sharing the Writer's pro-tier model and
+voice layers, saved to `Substack Essays.docx`. The Orchestrator
+(`agents/orchestrator.py`) routes natural-language requests across all of
+the above -- its keyword-based `route()` step has no Gemini call and is
+fully unit-tested. All agents share retry/error handling through
+`gemini_client.py`. Steps 6-12 (full guardrails, Analyst, observability,
+UI, deploy, writeup, video) are not built yet. See `BUILD_PLAN.md` for the
+sequence and `STATUS.md` for exactly where things stand.
 
 ## Working relationship
 
 John engages directly with critique and makes clear decisions. Honest pushback
 is welcomed. Do not pad responses. Build outward — resist over-polishing any
-one step. The highest-value next step is the Orchestrator (Day 5, routing
-Scout -> Strategist -> Writer end to end).
+one step. The highest-value next step is verifying the Orchestrator end to
+end against a real API key, then Step 6 (full guardrails).

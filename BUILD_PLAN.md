@@ -47,9 +47,29 @@ with empty history, `plan_week()` assigns each of the 5 pillars exactly once
 with no repeats; with a mock Scout briefing, a matching day's pillar picks
 up that topic's angle and headline.
 
-**Step 5: Orchestrator.** `agents/orchestrator.py`. Routes natural-language
-requests to agents. Wire Scout -> Strategist -> Writer for "what should I
-publish this week?" Test the full pipeline end to end.
+**Step 5: Orchestrator.** [DONE] `agents/orchestrator.py`. `route()` classifies
+a natural-language request into an intent + topic via deterministic keyword
+matching (no Gemini call, fully unit-tested without an API key).
+`handle_request()` then runs the matched pipeline: weekly-plan requests wire
+Scout -> Strategist -> Writer, and any day the calendar assigns to Substack
+also runs through the new Substack Specialist (see Step 5b below); single
+LinkedIn-post and trending-topic requests go straight to Writer/Scout; essay
+requests go Writer -> Substack Specialist. Verified: all 6 routing test
+cases (weekly plan, trending, LinkedIn post + topic extraction, essay +
+topic extraction, engagement, unrecognized) classify correctly.
+
+**Step 5b: Substack Specialist agent (added, not in the original 12).**
+[DONE] `agents/substack_specialist.py`. Expands a Writer-drafted LinkedIn
+post into a long-form Substack essay -- goes deeper into the same stories
+and arguments rather than padding the same paragraph. Shares the Writer's
+pro-tier model and voice/anti-AI-tell layers; applies the `substack_essay`
+entry from `PLATFORM_RULES` (800-1500 words, no hashtags, up to 4 em
+dashes). `guardrails.run_guardrails()` gained a `max_em_dashes` parameter
+(defaulted to the existing LinkedIn limit of 1) so this agent's essay
+em-dash allowance does not require a second guardrail function. Saves to
+`Substack Essays.docx`. Like Scout and Writer, needs a real API key to
+verify the actual Gemini call end to end; not yet run against one in this
+session.
 
 ## Phase 3 — Quality & memory [TODO]
 

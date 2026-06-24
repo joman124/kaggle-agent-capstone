@@ -2,7 +2,7 @@
 
 ## Overview
 
-Four specialized agents coordinated by an Orchestrator. Each agent has one job.
+Five specialized agents coordinated by an Orchestrator. Each agent has one job.
 The user interacts in natural language; the Orchestrator routes the request.
 
 ```
@@ -10,12 +10,16 @@ The user interacts in natural language; the Orchestrator routes the request.
                             |
                        ORCHESTRATOR
             routes requests to the right agent(s)
-            /          |           |            \
-       SCOUT      STRATEGIST     WRITER       ANALYST
-   web research   plan & calendar  draft     learn & adjust
-        |              |            |            |
-   Google Search   content history  voice    engagement
-   grounding       + pillar state   guardrails  data store
+       /        |          |           |            \
+   SCOUT   STRATEGIST    WRITER     SUBSTACK       ANALYST
+   web      plan &      draft      SPECIALIST     learn &
+   research calendar    posts      expands a       adjust
+     |         |          |        LinkedIn post     |
+  Google    content     voice      into an essay   engagement
+  Search    history +   guard-         |            data store
+  grounding pillar      rails      voice guardrails
+            state                  (substack_essay
+                                    platform rules)
 ```
 
 ## Agents
@@ -50,23 +54,41 @@ John reviews from the docx. Still TODO: voice-consistency scoring
 (LLM-as-a-judge against `REFERENCE_PASSAGES`), length enforcement per
 platform, tone check, and the revise-and-recheck loop (up to 3 times).
 
+### Substack Specialist (added alongside Step 5) [BUILT]
+Expands a LinkedIn post into a long-form Substack essay
+(`agents/substack_specialist.py`). Takes the Writer's draft as a seed and
+goes deeper into the specific moments, patients, and arguments the short
+post only had room to gesture at -- not a padded restatement of the same
+paragraph. Applies the same voice + anti-AI-tell layers as the Writer and
+the `substack_essay` entry from `PLATFORM_RULES` (800-1500 words, no
+hashtags, up to 4 em dashes). Shares the Writer's pro-tier model
+(`GEMINI_WRITER_MODEL`) since draft quality matters here too. Saves
+essays to `Substack Essays.docx` via `doc_output.py`.
+
 ### Analyst (Day 5 — observability / iteration)
 Ingests engagement data (entered by John or via API later). Computes
 performance per pillar/platform/format, compares against targets, and feeds
 recommendations back to the Strategist. Produces a weekly summary report.
 
-### Orchestrator
-Top-level router. Maps natural-language requests to agents:
-- "What should I publish this week?" -> Scout -> Strategist -> Writer
+### Orchestrator (Day 5 — multi-agent coordination) [BUILT]
+Top-level router (`agents/orchestrator.py`). `route()` classifies a
+natural-language request into an intent + topic via deterministic keyword
+matching -- no Gemini call, so it is unit-tested without an API key.
+`handle_request()` then runs the matched agent pipeline:
+- "What should I publish this week?" -> Scout -> Strategist -> Writer,
+  then Substack Specialist for any day the calendar assigns to Substack
 - "Write me a LinkedIn post about X" -> Writer
 - "What's trending?" -> Scout
-- "Here are last week's numbers" -> Analyst
-- "Draft an essay reacting to [news]" -> Scout -> Writer
+- "Here are last week's numbers" -> Analyst [not built yet, Step 7]
+- "Draft an essay about/reacting to X" -> Writer -> Substack Specialist
+  (Scout fills in a topic first if none was given)
 
 ## Memory / state files (JSON in /memory)
 
 - `content_history.json` — every post: title, date, pillar, platform, metrics
-  [BUILT, seeded empty; nothing writes to it yet - Orchestrator/Analyst will]
+  [BUILT, seeded empty; the Orchestrator does not write to it yet -
+  history will need to be appended after a post is actually published,
+  which is Step 7/Analyst territory]
 - `pillar_tracker.json` — rolling 30-day pillar distribution
   [BUILT, recomputed and overwritten by Strategist on every run]
 - `calendar.json` — planned upcoming posts
@@ -102,8 +124,11 @@ after-work-agent/
                           posts to LinkedIn Posts.docx
     scout.py            [BUILT] Google Search grounding, JSON topic briefing
     strategist.py       [BUILT] pillar/platform balancing, memory/calendar.json
+    substack_specialist.py [BUILT] expands a LinkedIn post into a long-form
+                          essay; saves to Substack Essays.docx
     analyst.py          [TODO]
-    orchestrator.py     [TODO]
+    orchestrator.py     [BUILT] routes natural-language requests across
+                          Scout / Strategist / Writer / Substack Specialist
   guardrails.py         [BUILT] first-pass checks (banned phrase, em-dash,
                           curly quotes, parallelism flags); LLM-as-judge
                           voice/tone scoring still TODO (Step 6)
