@@ -20,10 +20,13 @@ The user interacts in natural language; the Orchestrator routes the request.
 
 ## Agents
 
-### Scout (Day 2 — tool use)
+### Scout (Day 2 — tool use) [BUILT]
 Finds trending topics in the psychology + AI + work space using Gemini with
-Google Search grounding. Returns a structured briefing of 3-5 topics with
-summaries, relevance scores, suggested angle, pillar, and platform.
+Google Search grounding (`agents/scout.py`). Returns a JSON array of 3-5
+topics with headline, source, relevance score, suggested angle, pillar, and
+platform. Takes an optional topic to focus the search instead of scanning
+broadly for what's trending. Uses `GEMINI_MODEL` (Flash), shared with future
+agents, not the Writer's pro model.
 
 ### Strategist (Day 3 — context engineering / memory)
 Plans what to publish, when, and where. Maintains persistent state: content
@@ -79,11 +82,12 @@ after-work-agent/
   requirements.txt
   voice_profile.py      [BUILT] voice + anti-AI-tell layers, guardrail data
   check_setup.py        [BUILT] lists available models, verifies key
+  gemini_client.py      [BUILT] shared retry/error-handling call wrapper
   agents/
     __init__.py         [BUILT]
     writer.py           [BUILT] promoted from step1_writer.py; uses
                           GEMINI_WRITER_MODEL (pro-tier by default)
-    scout.py            [TODO]
+    scout.py            [BUILT] Google Search grounding, JSON topic briefing
     strategist.py       [TODO]
     analyst.py          [TODO]
     orchestrator.py     [TODO]

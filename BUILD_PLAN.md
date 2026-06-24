@@ -23,11 +23,14 @@ and the original file retired. Writer reads its model from
 
 [TODO below]
 
-**Step 3: Scout agent.** `agents/scout.py`. Gemini + Google Search grounding.
-Input: optional topic. Output: JSON briefing of 3-5 topics (headline, source,
-relevance_score, suggested_angle, suggested_pillar, suggested_platform). Test:
-"Find trending AI + psychology topics from the past 48 hours" returns recent,
-relevant results.
+**Step 3: Scout agent.** [DONE] `agents/scout.py`. Gemini + Google Search
+grounding via `types.Tool(google_search=types.GoogleSearch())`. Input:
+optional topic (CLI arg). Output: JSON array of 3-5 topics (headline, source,
+relevance_score, suggested_angle, suggested_pillar, suggested_platform). Uses
+`GEMINI_MODEL` (Flash), not the Writer's pro model. Shares the new
+`gemini_client.generate()` retry/error wrapper with the Writer. Test by
+running it with a real API key: `python -m agents.scout` for trending topics,
+or `python -m agents.scout "AI layoffs"` to focus the search.
 
 **Step 4: Strategist agent.** `agents/strategist.py` + `memory/` JSON. Reads
 content history and pillar distribution; consumes a Scout briefing; outputs a
