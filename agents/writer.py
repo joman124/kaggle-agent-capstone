@@ -8,29 +8,36 @@ other agents (Scout, Strategist, Analyst) will use. Defaults to a -pro model
 since draft quality matters most here; override in .env if your key does not
 have access to one (run check_setup.py to see what is available).
 
+Step 6: drafting now runs through guardrails.draft_with_guardrails(), which
+generates, scores (first-pass rule checks + LLM-as-judge voice/tone), and
+re-drafts with the judge's feedback up to 3 times before giving up.
+
 Run:  python -m agents.writer
 """
 
 import os
 import time
 
-from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT
-from guardrails import run_guardrails
-from gemini_client import generate
-from doc_output import append_to_doc
+from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT, PLATFORM_RULES
+from guardrails import draft_with_guardrails
 
 # Writer defaults to a pro-tier model regardless of GEMINI_MODEL (used by
 # other agents); override with GEMINI_WRITER_MODEL in .env if needed.
 MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 LINKEDIN_DOC = "LinkedIn Posts.docx"
+LINKEDIN_RULES = PLATFORM_RULES["linkedin_text_post"]
 
 
-def write_linkedin_post(topic: str) -> str:
-    prompt = f"""Write a LinkedIn text post about this topic:
+def _build_linkedin_prompt(topic: str, feedback: str = None) -> str:
+    revision_note = (
+        f"\nA previous draft was rejected. Fix this before writing: {feedback}\n"
+        if feedback else ""
+    )
+    return f"""Write a LinkedIn text post about this topic:
 
 TOPIC: {topic}
-
+{revision_note}
 Find a fresh angle. Do not default to the most obvious patient or scenario;
 vary the person, the setting, and the specific detail each time.
 
@@ -44,10 +51,30 @@ Requirements:
 - No emoji
 
 Write only the post. No preamble, no explanation."""
-    return generate(MODEL, prompt, system_instruction=SYSTEM_INSTRUCTION)
+
+
+def draft_linkedin_post(topic: str, max_attempts: int = 3) -> dict:
+    """Generate-evaluate-revise loop for a LinkedIn post. Returns
+    {"text", "attempts", "evaluation", "history"} from draft_with_guardrails."""
+    return draft_with_guardrails(
+        MODEL,
+        build_prompt=lambda feedback: _build_linkedin_prompt(topic, feedback),
+        system_instruction=SYSTEM_INSTRUCTION,
+        max_em_dashes=LINKEDIN_RULES["max_em_dashes"],
+        max_attempts=max_attempts,
+        agent="writer",
+    )
+
+
+def write_linkedin_post(topic: str) -> str:
+    """Thin wrapper kept for callers (e.g. the Orchestrator) that only want
+    the final text, not the full evaluation history."""
+    return draft_linkedin_post(topic)["text"]
 
 
 if __name__ == "__main__":
+    from doc_output import append_to_doc
+
     print(f"Using model: {MODEL}\n")
     test_topics = [
         "A patient who felt embarrassed to grieve a job he lost to an AI pipeline",
@@ -62,20 +89,12 @@ if __name__ == "__main__":
         # Free-tier allows only a few requests per minute; pause between calls.
         if i > 1:
             time.sleep(20)
-        post = write_linkedin_post(topic)
-        g = run_guardrails(post)
-        append_to_doc(LINKEDIN_DOC, topic, post)
-        print(f"[SAVED] Appended to '{LINKEDIN_DOC}'")
-        if g["clean"]:
-            print("[GUARDRAILS] Clean. No AI tells or banned phrases detected.")
+        result = draft_linkedin_post(topic)
+        append_to_doc(LINKEDIN_DOC, topic, result["text"])
+        print(f"[SAVED] Appended to '{LINKEDIN_DOC}' after {result['attempts']} attempt(s)")
+        e = result["evaluation"]
+        if e["passed"]:
+            print(f"[GUARDRAILS] Passed. voice_score={e['voice_score']}/10, tone={e['tone']}")
         else:
-            print("[GUARDRAILS] Flags:")
-            if g["banned_phrases"]:
-                print(f"   banned phrases: {g['banned_phrases']}")
-            if g["em_dash_count"] > 1:
-                print(f"   em dashes: {g['em_dash_count']} (limit 1)")
-            if g["has_curly_quotes"]:
-                print("   curly quotes present (should be straight)")
-            if g["negative_parallelisms"]:
-                print(f"   review - possible negative parallelism: {g['negative_parallelisms']}")
+            print(f"[GUARDRAILS] Did not pass after {result['attempts']} attempts: {e['feedback']}")
         print()

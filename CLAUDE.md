@@ -54,29 +54,41 @@ governs. The banned-phrase list and guardrails enforce it mechanically.
 
 ## Current state
 
-Steps 1-5 of 12 are done, plus one agent added beyond the original plan.
-The Writer agent (`agents/writer.py`) generates LinkedIn posts in John's
-voice, passes first-pass guardrails (`guardrails.py`), and saves them to
-`LinkedIn Posts.docx` via `doc_output.py` since John reviews from the
-docx, not the console. The Scout agent (`agents/scout.py`) finds trending
-topics via Gemini + Google Search grounding and returns a JSON briefing.
-The Strategist agent (`agents/strategist.py`) reads `memory/` JSON state,
-balances pillar coverage on a rolling 30-day window, applies a fixed
-platform cadence, and writes a 5-day plan to `memory/calendar.json` --
-pure logic, no Gemini calls. The Substack Specialist agent
-(`agents/substack_specialist.py`) expands a Writer-drafted LinkedIn post
-into a long-form Substack essay, sharing the Writer's pro-tier model and
-voice layers, saved to `Substack Essays.docx`. The Orchestrator
+Steps 1-8 of 12 are done, plus one agent added beyond the original plan.
+The Writer agent (`agents/writer.py`) and the Substack Specialist agent
+(`agents/substack_specialist.py`, which expands a Writer-drafted LinkedIn
+post into a long-form essay) both draft through
+`guardrails.draft_with_guardrails()`: a shared generate-evaluate-revise loop
+that runs first-pass checks (banned phrases, em-dash/curly-quote counts,
+parallelism flags) plus an LLM-as-a-judge voice/tone score against
+`REFERENCE_PASSAGES` (reject below 7/10 or a non-authentic tone), feeding
+the judge's feedback into up to 2 redraft attempts before giving up. Drafts
+save to `LinkedIn Posts.docx` / `Substack Essays.docx` via `doc_output.py`
+since John reviews from the docx, not the console. The Scout agent
+(`agents/scout.py`) finds trending topics via Gemini + Google Search
+grounding and returns a JSON briefing. The Strategist agent
+(`agents/strategist.py`) reads `memory/` JSON state, balances pillar
+coverage on a rolling 30-day window, applies a fixed platform cadence, can
+shift that ranking using `pillar_adjustments` from the Analyst, and writes a
+5-day plan to `memory/calendar.json` -- pure logic, no Gemini calls. The
+Analyst agent (`agents/analyst.py`) reads `memory/engagement_data.json`,
+computes engagement rate per pillar against a placeholder target, and
+produces both the Strategist's pillar adjustments and a `weekly_summary()`
+report -- also pure logic, no Gemini calls. The Orchestrator
 (`agents/orchestrator.py`) routes natural-language requests across all of
 the above -- its keyword-based `route()` step has no Gemini call and is
-fully unit-tested. All agents share retry/error handling through
-`gemini_client.py`. Steps 6-12 (full guardrails, Analyst, observability,
-UI, deploy, writeup, video) are not built yet. See `BUILD_PLAN.md` for the
+fully unit-tested -- and logs every routing decision plus every draft
+attempt to `logs/agent_trace.jsonl` via `observability.py`. All agents share
+retry/error handling through `gemini_client.py`. Steps 9-12 (Streamlit UI,
+deploy, writeup, video) are not built yet. See `BUILD_PLAN.md` for the
 sequence and `STATUS.md` for exactly where things stand.
 
 ## Working relationship
 
 John engages directly with critique and makes clear decisions. Honest pushback
 is welcomed. Do not pad responses. Build outward — resist over-polishing any
-one step. The highest-value next step is verifying the Orchestrator end to
-end against a real API key, then Step 6 (full guardrails).
+one step. The highest-value next step is verifying Steps 6-8 end to end
+against a real API key (the revise loop's control flow and the Analyst's
+logic were verified in a dev sandbox without `google-genai`/`python-docx`
+installed, by stubbing those dependencies -- they still need a real run),
+then Step 9 (Streamlit UI).

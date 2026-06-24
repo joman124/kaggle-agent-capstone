@@ -67,17 +67,25 @@ def _match_scout_topic(pillar: str, used_headlines: set, scout_briefing: list):
     return None
 
 
-def plan_week(scout_briefing: list = None, num_days: int = 5) -> list:
+def plan_week(scout_briefing: list = None, num_days: int = 5,
+              pillar_adjustments: dict = None) -> list:
     """Build a balanced content plan. Least-used pillars in the rolling
     window go first; platform follows a fixed cadence pattern so Strategist
     keeps control of platform balance even when Scout suggests otherwise.
     If a Scout briefing is supplied, each day's pillar is matched to a topic
-    from it when one is available."""
+    from it when one is available. pillar_adjustments (from
+    agents.analyst.get_pillar_adjustments(), +1/-1/0 per pillar) shifts a
+    pillar earlier (+1, it is overperforming, do more) or later (-1) in the
+    ranking without overriding the rolling-window balance entirely."""
     history = _load_json(CONTENT_HISTORY_PATH, [])
     distribution = compute_pillar_distribution(history)
     _save_json(PILLAR_TRACKER_PATH, distribution)
 
-    ranked_pillars = sorted(PILLARS, key=lambda p: (distribution[p], PILLARS.index(p)))
+    adjustments = pillar_adjustments or {}
+    ranked_pillars = sorted(
+        PILLARS,
+        key=lambda p: (distribution[p] - adjustments.get(p, 0), PILLARS.index(p)),
+    )
     used_headlines = set()
     plan = []
     for i in range(num_days):

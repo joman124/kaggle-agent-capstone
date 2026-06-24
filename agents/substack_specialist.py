@@ -10,6 +10,10 @@ draft quality matters here too. Saves essays to "Substack Essays.docx" via
 doc_output.py instead of printing markdown, since John reviews from the
 docx.
 
+Step 6: drafting now runs through guardrails.draft_with_guardrails(), same
+generate-evaluate-revise loop as the Writer, using the essay's looser
+em-dash allowance from PLATFORM_RULES.
+
 Run:  python -m agents.substack_specialist
 """
 
@@ -17,9 +21,7 @@ import os
 import time
 
 from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT, PLATFORM_RULES
-from guardrails import run_guardrails
-from gemini_client import generate
-from doc_output import append_to_doc
+from guardrails import draft_with_guardrails
 from agents.writer import write_linkedin_post
 
 # Shares the Writer's pro-tier model since this is also publication-quality
@@ -30,14 +32,17 @@ SUBSTACK_DOC = "Substack Essays.docx"
 ESSAY_RULES = PLATFORM_RULES["substack_essay"]
 
 
-def expand_to_essay(linkedin_post: str, topic: str = None) -> str:
-    """Expand a LinkedIn post into a long-form Substack essay."""
+def _build_essay_prompt(linkedin_post: str, topic: str = None, feedback: str = None) -> str:
     topic_line = f"\nORIGINAL TOPIC: {topic}\n" if topic else ""
-    prompt = f"""Expand this LinkedIn post into a long-form Substack essay.
+    revision_note = (
+        f"\nA previous draft was rejected. Fix this before writing: {feedback}\n"
+        if feedback else ""
+    )
+    return f"""Expand this LinkedIn post into a long-form Substack essay.
 {topic_line}
 LINKEDIN POST:
 {linkedin_post}
-
+{revision_note}
 This is not a longer version of the same post. Use it as a seed: keep its
 core story and thesis, then go deeper into the specific moments, patients,
 and arguments it only had room to gesture at. Add a second example or
@@ -53,10 +58,30 @@ Requirements:
 - End on something unresolved or a quiet observation, not a neat bow
 
 Write only the essay. No title, no preamble, no explanation."""
-    return generate(MODEL, prompt, system_instruction=SYSTEM_INSTRUCTION)
+
+
+def draft_essay(linkedin_post: str, topic: str = None, max_attempts: int = 3) -> dict:
+    """Generate-evaluate-revise loop for a Substack essay. Returns
+    {"text", "attempts", "evaluation", "history"} from draft_with_guardrails."""
+    return draft_with_guardrails(
+        MODEL,
+        build_prompt=lambda feedback: _build_essay_prompt(linkedin_post, topic, feedback),
+        system_instruction=SYSTEM_INSTRUCTION,
+        max_em_dashes=ESSAY_RULES["max_em_dashes"],
+        max_attempts=max_attempts,
+        agent="substack_specialist",
+    )
+
+
+def expand_to_essay(linkedin_post: str, topic: str = None) -> str:
+    """Thin wrapper kept for callers (e.g. the Orchestrator) that only want
+    the final text, not the full evaluation history."""
+    return draft_essay(linkedin_post, topic)["text"]
 
 
 if __name__ == "__main__":
+    from doc_output import append_to_doc
+
     print(f"Using model: {MODEL}\n")
     seed_topic = "A patient who felt embarrassed to grieve a job he lost to an AI pipeline"
 
@@ -73,24 +98,17 @@ if __name__ == "__main__":
     print("=" * 70)
     print("Expanding into a Substack essay")
     print("=" * 70)
-    essay = expand_to_essay(post, seed_topic)
-    g = run_guardrails(essay, max_em_dashes=ESSAY_RULES["max_em_dashes"])
+    result = draft_essay(post, seed_topic)
+    essay = result["text"]
     append_to_doc(SUBSTACK_DOC, seed_topic, essay)
-    print(f"[SAVED] Appended to '{SUBSTACK_DOC}'")
+    print(f"[SAVED] Appended to '{SUBSTACK_DOC}' after {result['attempts']} attempt(s)")
 
     word_count = len(essay.split())
     print(f"[LENGTH] {word_count} words "
           f"(target {ESSAY_RULES['min_words']}-{ESSAY_RULES['max_words']})")
 
-    if g["clean"]:
-        print("[GUARDRAILS] Clean. No AI tells or banned phrases detected.")
+    e = result["evaluation"]
+    if e["passed"]:
+        print(f"[GUARDRAILS] Passed. voice_score={e['voice_score']}/10, tone={e['tone']}")
     else:
-        print("[GUARDRAILS] Flags:")
-        if g["banned_phrases"]:
-            print(f"   banned phrases: {g['banned_phrases']}")
-        if g["em_dash_count"] > ESSAY_RULES["max_em_dashes"]:
-            print(f"   em dashes: {g['em_dash_count']} (limit {ESSAY_RULES['max_em_dashes']})")
-        if g["has_curly_quotes"]:
-            print("   curly quotes present (should be straight)")
-        if g["negative_parallelisms"]:
-            print(f"   review - possible negative parallelism: {g['negative_parallelisms']}")
+        print(f"[GUARDRAILS] Did not pass after {result['attempts']} attempts: {e['feedback']}")

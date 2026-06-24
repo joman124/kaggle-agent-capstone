@@ -4,6 +4,9 @@
 # Generated content (draft posts, often unpublished/personal)
 *.docx
 
+# Runtime observability trace (regenerated every run)
+logs/
+
 # Python
 __pycache__/
 *.pyc

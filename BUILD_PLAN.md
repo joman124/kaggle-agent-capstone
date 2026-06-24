@@ -1,6 +1,6 @@
 # Build Plan — After Work Social Presence Agent
 
-12 steps, sequenced so each is independently testable. Step 1 is done.
+12 steps, sequenced so each is independently testable. Steps 1-8 are done.
 Each step maps to a course concept for the capstone writeup.
 
 ## Phase 1 — Foundation [DONE]
@@ -17,15 +17,13 @@ Each step maps to a course concept for the capstone writeup.
   instead of being dumped as console text, since John reviews from the docx.
   Verified working end to end.
 
-## Phase 2 — Multi-agent
+## Phase 2 — Multi-agent [DONE]
 
 **Step 2: Refactor into a package.** [DONE] Shared code moved into `agents/`
 and `guardrails.py`. `step1_writer.py` logic promoted into `agents/writer.py`
 and the original file retired. Writer reads its model from
 `GEMINI_WRITER_MODEL` (defaults to a `-pro` model), separate from
 `GEMINI_MODEL` which other agents will use.
-
-[TODO below]
 
 **Step 3: Scout agent.** [DONE] `agents/scout.py`. Gemini + Google Search
 grounding via `types.Tool(google_search=types.GoogleSearch())`. Input:
@@ -71,21 +69,46 @@ em-dash allowance does not require a second guardrail function. Saves to
 verify the actual Gemini call end to end; not yet run against one in this
 session.
 
-## Phase 3 — Quality & memory [TODO]
+## Phase 3 — Quality & memory [DONE]
 
-**Step 6: Full guardrails.** `guardrails.py`. Promote the first-pass checks and
-add LLM-as-a-judge voice-consistency scoring against `REFERENCE_PASSAGES`
-(0-10; reject < 7) and a tone check (reject promotional/preachy/generic). Writer
-revises and re-checks up to 3 times. Test: feed deliberately off-voice content,
-confirm rejection + revision.
+**Step 6: Full guardrails.** [DONE] `guardrails.py` gained `judge_voice()`
+(LLM-as-a-judge against `REFERENCE_PASSAGES`, using `GEMINI_MODEL`/Flash
+since this is evaluation, not generation), `evaluate()` (combines first-pass
+checks + the judge score into a single pass/fail with a feedback string),
+and `draft_with_guardrails()` -- the shared generate-evaluate-revise loop
+(up to 3 attempts, judge feedback fed into the next prompt) used by both
+`agents/writer.py` (`draft_linkedin_post()`) and
+`agents/substack_specialist.py` (`draft_essay()`). `write_linkedin_post()`
+and `expand_to_essay()` stay as thin wrappers returning just the final text,
+so the Orchestrator's existing calls did not need to change. Verified by
+stubbing `gemini_client.generate` and monkeypatching `guardrails.judge_voice`
+to fail twice then pass: confirmed 3 logged attempts, judge feedback
+propagated into each successive prompt, and an early stop on the first pass;
+a second run where the judge never passes confirmed it stops at
+`max_attempts` and returns `passed: False` rather than looping forever.
 
-**Step 7: Analyst agent.** `agents/analyst.py` + `memory/engagement_data.json`.
-Ingest metrics, compute per-pillar/platform/format performance, compare to
-targets, output recommendations + weekly summary. Test with mock data.
+**Step 7: Analyst agent.** [DONE] `agents/analyst.py` +
+`memory/engagement_data.json` (seeded empty). Pure logic, no Gemini calls.
+`compute_performance()` aggregates an impressions-weighted engagement rate
+per pillar; `compare_to_target()` classifies each against
+`DEFAULT_TARGET_RATE` (a 3% placeholder until John has real targets);
+`pillar_adjustments()` / `get_pillar_adjustments()` turn that into a
+`{pillar: +1/-1/0}` map the Strategist consumes; `weekly_summary()` produces
+a human-readable report, now returned by the Orchestrator for
+"engagement"-intent requests. Verified with mock data (5 posts across all 5
+pillars): overperforming pillars classified "above" -> +1, underperforming
+"below" -> -1.
 
-**Step 8: Observability.** Structured logging of every agent decision (agent,
-inputs, decision, scores). This is a Day 4/5 talking point. Test: a full run
-produces a readable trace.
+**Step 8: Observability.** [DONE] `observability.py`'s `log_decision()`
+appends one JSON object per agent decision to `logs/agent_trace.jsonl`
+(agent, action, timestamp, plus whatever inputs/decision/scores the caller
+passes). Wired into `guardrails.draft_with_guardrails()` (one line per draft
+attempt, with voice score and tone) and `agents/orchestrator.py`'s
+`handle_request()` (one line per routing decision). `route()` itself stays
+free of logging so it keeps its no-side-effects, fully-unit-tested property.
+Verified directly: `log_decision()` writes a valid, parseable JSON line with
+the expected fields. `logs/` added to `.gitignore` since the trace is
+regenerated every run, like the generated `.docx` files.
 
 ## Phase 4 — Polish, deploy, submit [TODO]
 

@@ -58,7 +58,14 @@ def handle_request(request: str) -> str:
     """Route the request and run the matched agent pipeline. Imports agents
     lazily inside each handler so routing stays importable without an API
     key; only the branch that actually runs needs GEMINI_API_KEY set."""
+    from observability import log_decision
+
     intent, topic = route(request)
+    log_decision(
+        agent="orchestrator", action="route",
+        inputs={"request": request},
+        decision={"intent": intent, "topic": topic},
+    )
 
     if intent == "weekly_plan":
         return _handle_weekly_plan()
@@ -69,8 +76,7 @@ def handle_request(request: str) -> str:
     if intent == "essay":
         return _handle_essay(topic)
     if intent == "engagement":
-        return ("[ORCHESTRATOR] The Analyst agent is not built yet (Step 7). "
-                 "Bring engagement numbers back once it exists.")
+        return _handle_engagement()
     return ("[ORCHESTRATOR] Did not recognize that request. Try things like "
             "\"What should I publish this week?\", \"What's trending?\", "
             "\"Write me a LinkedIn post about X\", or \"Draft an essay about X\".")
@@ -79,12 +85,14 @@ def handle_request(request: str) -> str:
 def _handle_weekly_plan() -> str:
     from agents.scout import find_topics
     from agents.strategist import plan_week
+    from agents.analyst import get_pillar_adjustments
     from agents.writer import write_linkedin_post
     from agents.substack_specialist import expand_to_essay
     from doc_output import append_to_doc
 
     briefing = find_topics()
-    plan = plan_week(scout_briefing=briefing)
+    adjustments = get_pillar_adjustments()
+    plan = plan_week(scout_briefing=briefing, pillar_adjustments=adjustments)
 
     lines = ["[ORCHESTRATOR] Weekly plan:"]
     for day in plan:
@@ -137,6 +145,11 @@ def _handle_essay(topic) -> str:
     essay = expand_to_essay(post, topic)
     append_to_doc("Substack Essays.docx", topic, essay)
     return f"[ORCHESTRATOR] Essay saved to 'Substack Essays.docx':\n\n{essay}"
+
+
+def _handle_engagement() -> str:
+    from agents.analyst import weekly_summary
+    return weekly_summary()
 
 
 if __name__ == "__main__":

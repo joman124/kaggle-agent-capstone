@@ -39,47 +39,62 @@ no Gemini calls. Reads `memory/content_history.json`, computes a rolling
 Ranks pillars least-used-first so coverage stays balanced over time, applies
 a fixed platform cadence (3 LinkedIn : 2 Substack per 5-day plan) so platform
 balance does not depend on what Scout suggests, and optionally matches each
-day's pillar to a topic from a Scout briefing. Writes the plan to
-`memory/calendar.json`. Still TODO: consuming Analyst feedback (Step 7) to
-adjust pillar weighting over time.
+day's pillar to a topic from a Scout briefing. `plan_week()` now also takes
+an optional `pillar_adjustments` map from the Analyst (`{pillar: +1/-1/0}`)
+and shifts the ranking accordingly -- an overperforming pillar (+1) moves
+earlier without overriding the rolling-window balance outright. Writes the
+plan to `memory/calendar.json`.
 
-### Writer (Day 4 — quality / guardrails) [PARTIALLY BUILT]
+### Writer (Day 4 — quality / guardrails) [BUILT]
 Drafts publication-ready content in John's voice (`agents/writer.py`). Loads
-`voice_profile.py` and runs first-pass guardrails (`guardrails.py`): banned-
-phrase scan, em-dash and curly-quote checks, negative-parallelism flags. Uses
-its own model (`GEMINI_WRITER_MODEL`, pro-tier by default) since draft
-quality matters most here. Saves generated posts to `LinkedIn Posts.docx`
-(via `doc_output.py`) instead of printing markdown to the console, since
-John reviews from the docx. Still TODO: voice-consistency scoring
-(LLM-as-a-judge against `REFERENCE_PASSAGES`), length enforcement per
-platform, tone check, and the revise-and-recheck loop (up to 3 times).
+`voice_profile.py` and drafts through `guardrails.draft_with_guardrails()`:
+first-pass checks (banned-phrase scan, em-dash and curly-quote checks,
+negative-parallelism flags) plus an LLM-as-a-judge voice/tone score against
+`REFERENCE_PASSAGES` (0-10; reject below 7, or a non-"authentic" tone). On a
+reject, the judge's feedback is fed back into the next prompt and the Writer
+redrafts, up to 3 attempts, before giving up and returning its best attempt.
+Uses its own model (`GEMINI_WRITER_MODEL`, pro-tier by default) for drafting;
+the judge itself uses `GEMINI_MODEL` (Flash), since evaluation does not need
+the pro-tier model. Saves generated posts to `LinkedIn Posts.docx` (via
+`doc_output.py`) instead of printing markdown to the console, since John
+reviews from the docx.
 
 ### Substack Specialist (added alongside Step 5) [BUILT]
 Expands a LinkedIn post into a long-form Substack essay
 (`agents/substack_specialist.py`). Takes the Writer's draft as a seed and
 goes deeper into the specific moments, patients, and arguments the short
 post only had room to gesture at -- not a padded restatement of the same
-paragraph. Applies the same voice + anti-AI-tell layers as the Writer and
-the `substack_essay` entry from `PLATFORM_RULES` (800-1500 words, no
-hashtags, up to 4 em dashes). Shares the Writer's pro-tier model
+paragraph. Drafts through the same `guardrails.draft_with_guardrails()`
+generate-evaluate-revise loop as the Writer, using the `substack_essay`
+entry from `PLATFORM_RULES` (800-1500 words, no hashtags, up to 4 em
+dashes) for its first-pass checks. Shares the Writer's pro-tier model
 (`GEMINI_WRITER_MODEL`) since draft quality matters here too. Saves
 essays to `Substack Essays.docx` via `doc_output.py`.
 
-### Analyst (Day 5 — observability / iteration)
-Ingests engagement data (entered by John or via API later). Computes
-performance per pillar/platform/format, compares against targets, and feeds
-recommendations back to the Strategist. Produces a weekly summary report.
+### Analyst (Day 5 — observability / iteration) [BUILT]
+Ingests engagement data from `memory/engagement_data.json`
+(`agents/analyst.py`). Pure logic, no Gemini calls. Computes an
+impressions-weighted engagement rate per pillar (`compute_performance()`),
+compares each against `DEFAULT_TARGET_RATE` (a 3% placeholder benchmark
+until John has real targets) to classify it "above"/"at"/"below"
+(`compare_to_target()`), and turns that into a `{pillar: +1/-1/0}`
+adjustment map (`pillar_adjustments()` / `get_pillar_adjustments()`) that
+the Strategist consumes to favor overperforming pillars. Also produces a
+human-readable `weekly_summary()`, which the Orchestrator now returns for
+"engagement"-intent requests instead of the old "not built yet" message.
 
 ### Orchestrator (Day 5 — multi-agent coordination) [BUILT]
 Top-level router (`agents/orchestrator.py`). `route()` classifies a
 natural-language request into an intent + topic via deterministic keyword
 matching -- no Gemini call, so it is unit-tested without an API key.
-`handle_request()` then runs the matched agent pipeline:
-- "What should I publish this week?" -> Scout -> Strategist -> Writer,
-  then Substack Specialist for any day the calendar assigns to Substack
+`handle_request()` logs the routing decision via `observability.log_decision()`
+right after calling `route()`, then runs the matched agent pipeline:
+- "What should I publish this week?" -> Scout -> Analyst (pillar
+  adjustments) -> Strategist -> Writer, then Substack Specialist for any
+  day the calendar assigns to Substack
 - "Write me a LinkedIn post about X" -> Writer
 - "What's trending?" -> Scout
-- "Here are last week's numbers" -> Analyst [not built yet, Step 7]
+- "Here are last week's numbers" -> Analyst
 - "Draft an essay about/reacting to X" -> Writer -> Substack Specialist
   (Scout fills in a topic first if none was given)
 
@@ -87,13 +102,15 @@ matching -- no Gemini call, so it is unit-tested without an API key.
 
 - `content_history.json` — every post: title, date, pillar, platform, metrics
   [BUILT, seeded empty; the Orchestrator does not write to it yet -
-  history will need to be appended after a post is actually published,
-  which is Step 7/Analyst territory]
+  history will need to be appended after a post is actually published]
 - `pillar_tracker.json` — rolling 30-day pillar distribution
   [BUILT, recomputed and overwritten by Strategist on every run]
 - `calendar.json` — planned upcoming posts
   [BUILT, overwritten by Strategist's `plan_week()` on every run]
-- `engagement_data.json` — post-level metrics over time [TODO, Step 7]
+- `engagement_data.json` — post-level metrics over time
+  [BUILT, seeded empty; John (or a later API integration) appends
+  per-post {pillar, platform, likes, comments, shares, impressions}
+  entries here for the Analyst to read]
 
 ## Tech stack
 
@@ -126,17 +143,26 @@ after-work-agent/
     strategist.py       [BUILT] pillar/platform balancing, memory/calendar.json
     substack_specialist.py [BUILT] expands a LinkedIn post into a long-form
                           essay; saves to Substack Essays.docx
-    analyst.py          [TODO]
+    analyst.py          [BUILT] pillar/platform performance vs. target
+                          engagement rate; feeds pillar_adjustments back
+                          to the Strategist; weekly_summary() report
     orchestrator.py     [BUILT] routes natural-language requests across
-                          Scout / Strategist / Writer / Substack Specialist
+                          Scout / Strategist / Writer / Substack
+                          Specialist / Analyst; logs every routing
+                          decision via observability.log_decision()
   guardrails.py         [BUILT] first-pass checks (banned phrase, em-dash,
-                          curly quotes, parallelism flags); LLM-as-judge
-                          voice/tone scoring still TODO (Step 6)
+                          curly quotes, parallelism flags) + LLM-as-judge
+                          voice/tone scoring (judge_voice, evaluate) +
+                          the shared generate-evaluate-revise loop
+                          (draft_with_guardrails) used by Writer and
+                          Substack Specialist
+  observability.py      [BUILT] log_decision() appends one JSON line per
+                          agent decision to logs/agent_trace.jsonl
   memory/
     content_history.json   [BUILT, seeded empty]
     pillar_tracker.json    [BUILT, generated by Strategist]
     calendar.json          [BUILT, generated by Strategist]
-    engagement_data.json   [TODO, Step 7]
+    engagement_data.json   [BUILT, seeded empty]
   app.py                [TODO] Streamlit UI
   STYLE_GUIDE.md        [BUILT] full voice + anti-AI reference
 ```

@@ -1,4 +1,4 @@
-# Status — as of Step 5 (June 24, 2026)
+# Status — as of Step 8 (June 24, 2026)
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
@@ -67,10 +67,48 @@
   (default 1, the LinkedIn rule) so the essay's looser limit did not need
   a second guardrail function.
 
+- **Step 6 done.** `guardrails.py` gained `judge_voice()` (LLM-as-a-judge
+  against `REFERENCE_PASSAGES`, scores voice_score 0-10 and tone, on
+  `GEMINI_MODEL`/Flash since this is evaluation not generation), `evaluate()`
+  (combines first-pass checks + the judge into one pass/fail + feedback
+  string), and `draft_with_guardrails()` -- the shared generate-evaluate-
+  revise loop (up to 3 attempts, judge feedback fed into the next prompt's
+  revision note). `agents/writer.py` and `agents/substack_specialist.py`
+  both route their drafting through it now (`draft_linkedin_post()` /
+  `draft_essay()`); `write_linkedin_post()` and `expand_to_essay()` stay as
+  thin wrappers so the Orchestrator's calls did not need to change.
+  Verified by stubbing `gemini_client.generate` and monkeypatching
+  `guardrails.judge_voice` to fail twice then pass: 3 logged attempts,
+  feedback correctly propagated into each next prompt, early stop on pass;
+  a second run where the judge never passes confirmed it stops at
+  `max_attempts` with `passed: False` instead of looping forever.
+- **Step 7 done.** `agents/analyst.py` + `memory/engagement_data.json`
+  (seeded empty). Pure logic, no Gemini calls. Computes an impressions-
+  weighted engagement rate per pillar, compares it to a placeholder 3%
+  target rate, and turns the comparison into a `{pillar: +1/-1/0}`
+  adjustment map the Strategist now consumes (`plan_week()` gained a
+  `pillar_adjustments` parameter that shifts the least-used-first ranking
+  without overriding the rolling-window balance outright). The
+  Orchestrator's "engagement" intent now returns `weekly_summary()` instead
+  of the old "Analyst not built yet" message, and its weekly-plan pipeline
+  calls `get_pillar_adjustments()` before `plan_week()`. Verified with mock
+  data (5 posts, one per pillar): overperforming pillars correctly
+  classified "above" -> +1, underperforming "below" -> -1; verified
+  separately that `plan_week()` actually moves a +1 pillar to the front of
+  the ranking with an otherwise-empty history.
+- **Step 8 done.** `observability.py`'s `log_decision()` appends one JSON
+  object per agent decision to `logs/agent_trace.jsonl`. Wired into
+  `draft_with_guardrails()` (one line per draft attempt, with voice score
+  and tone) and into `orchestrator.handle_request()` (one line per routing
+  decision, right after `route()` -- which itself stays free of logging so
+  it keeps its no-side-effects, fully-unit-tested property). `logs/` added
+  to `.gitignore` since the trace regenerates every run. Verified directly:
+  `log_decision()` writes one valid, parseable JSON line with the expected
+  fields.
+
 ## Not done
-- Steps 6-12 (see BUILD_PLAN.md): full guardrails, Analyst, observability,
-  Streamlit UI, deploy, writeup, video, submit.
-- `memory/engagement_data.json` not created yet (Step 7).
+- Steps 9-12 (see BUILD_PLAN.md): Streamlit UI, deploy, writeup, video,
+  submit.
 - LinkedIn account will be linked by John. Substack page created
   (`drjohnmansoor`) but no real posts published yet on either platform.
 - $10 API budget set; usage negligible so far.
@@ -103,14 +141,26 @@
   been run end to end yet. Also, `google-genai` and `python-docx` are not
   installed in the dev sandbox, so only `ast.parse()` syntax checks were
   possible on the new files, not a real import.
+- Same caveat again for Step 6's `judge_voice()` and `draft_with_guardrails()`
+  loop: the control flow (retry on fail, feedback propagation, stop on pass
+  or at max_attempts, one log line per attempt) was verified by stubbing
+  `gemini_client.generate` and monkeypatching `guardrails.judge_voice`
+  directly in the dev sandbox, since `google-genai` is not installed there.
+  This proves the loop logic is correct; it does not prove the judge prompt
+  itself reliably returns parseable JSON or sensible scores from a real
+  Gemini call. Run `python -m agents.writer` on your machine and check
+  `logs/agent_trace.jsonl` to confirm that against the real model.
 
 ## Immediate next step
 Run the Orchestrator end to end on your machine with a real `.env`:
 `python -m agents.orchestrator "What should I publish this week?"`. That
-single command now exercises the whole pipeline (Scout, Strategist,
-Writer, Substack Specialist) and is the first time any of Steps 3-5b get
-verified against a real key. After that, Step 6: full guardrails
-(LLM-as-judge voice scoring, length enforcement, revise-and-recheck loop).
+single command now exercises the whole pipeline (Scout, Analyst, Strategist,
+Writer with the new revise loop, Substack Specialist) and is the first time
+Steps 3-8 get verified against a real key rather than mocked/stubbed
+dependencies. Watch `logs/agent_trace.jsonl` while it runs -- you should see
+one `route` entry from the Orchestrator and one `draft_attempt` entry per
+Writer/Substack Specialist draft, with voice_score and tone on each. After
+that, Step 9: Streamlit UI.
 
 ## Voice feedback still pending
 John has not yet given line-level feedback on whether the generated voice fully
