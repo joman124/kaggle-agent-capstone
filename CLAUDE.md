@@ -44,7 +44,9 @@ governs. The banned-phrase list and guardrails enforce it mechanically.
    deprecated. Import as `from google import genai`.
 3. **Model name lives in `.env` as `GEMINI_MODEL`.** Currently `gemini-2.5-flash`.
    Never hard-code model names; the user's available models can be listed with
-   `check_setup.py`.
+   `check_setup.py`. The Writer agent uses a separate `GEMINI_WRITER_MODEL`
+   (defaults to `gemini-pro-latest`) since draft quality matters most there;
+   other agents use `GEMINI_MODEL`.
 4. **Free tier rate-limits aggressively.** Add retry-with-backoff on 503/500
    ServerError and a pause between rapid calls. Fail with plain-English messages
    on 429 (quota), 404 (bad model), and auth errors — never a raw traceback.
@@ -52,14 +54,17 @@ governs. The banned-phrase list and guardrails enforce it mechanically.
 
 ## Current state
 
-Step 1 of 12 is done and working: the Writer agent generates LinkedIn posts in
-John's voice and passes first-pass guardrails. A real test post came through
-clean. Steps 2-12 (Scout, Strategist, Analyst, Orchestrator, full guardrails,
-UI, deploy, writeup, video) are not built yet. See `BUILD_PLAN.md` for the
-sequence and `STATUS.md` for exactly where things stand.
+Steps 1-2 of 12 are done. The Writer agent (`agents/writer.py`) generates
+LinkedIn posts in John's voice and passes first-pass guardrails
+(`guardrails.py`). A real test post came through clean under the original
+single-file prototype, which has since been retired and folded into
+`agents/writer.py`. Steps 3-12 (Scout, Strategist, Analyst, Orchestrator,
+full guardrails, UI, deploy, writeup, video) are not built yet. See
+`BUILD_PLAN.md` for the sequence and `STATUS.md` for exactly where things
+stand.
 
 ## Working relationship
 
 John engages directly with critique and makes clear decisions. Honest pushback
-is welcomed. Do not pad responses. Build outward — resist over-polishing Step 1.
-The highest-value next step is the Scout agent (Day 2, tool use).
+is welcomed. Do not pad responses. Build outward — resist over-polishing any
+one step. The highest-value next step is the Scout agent (Day 2, tool use).

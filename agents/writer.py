@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-STEP 1: The Writer Agent (single-agent prototype).
-Reads the model name from .env (GEMINI_MODEL) so you can change it without
-editing code. Fails with a plain-English message on quota/auth errors.
-Run:  python step1_writer.py
+The Writer agent: drafts publication-ready social content in John's voice.
+Promoted from step1_writer.py during the Step 2 package refactor.
+
+Uses its own model (GEMINI_WRITER_MODEL), separate from GEMINI_MODEL which
+other agents (Scout, Strategist, Analyst) will use. Defaults to a -pro model
+since draft quality matters most here; override in .env if your key does not
+have access to one (run check_setup.py to see what is available).
+
+Run:  python -m agents.writer
 """
 
 import os
@@ -12,20 +17,15 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from google.genai import errors as genai_errors
-from voice_profile import (
-    VOICE_SYSTEM_PROMPT,
-    ANTI_AI_TELL_PROMPT,
-    BANNED_PHRASES,
-    NEGATIVE_PARALLELISM_FLAGS,
-)
 
-EM_DASH = chr(0x2014)
-CURLY_CHARS = [chr(0x2018), chr(0x2019), chr(0x201C), chr(0x201D)]
+from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT
+from guardrails import run_guardrails
 
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
-# Default to a current Flash model; override anytime by setting GEMINI_MODEL in .env
-MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+# Writer defaults to a pro-tier model regardless of GEMINI_MODEL (used by
+# other agents); override with GEMINI_WRITER_MODEL in .env if needed.
+MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
 
 if not API_KEY:
     raise SystemExit(
@@ -71,7 +71,7 @@ def _generate(prompt: str, max_retries: int = 5) -> str:
                 raise SystemExit(
                     f"\n[MODEL] '{MODEL}' is not available to your key.\n"
                     "Run 'python check_setup.py' to list valid model names, then set\n"
-                    "GEMINI_MODEL in your .env to one of them.\n"
+                    "GEMINI_WRITER_MODEL in your .env to one of them.\n"
                 )
             if "PERMISSION_DENIED" in msg or "API_KEY_INVALID" in msg:
                 raise SystemExit("\n[AUTH] Your API key is invalid or lacks permission. Check .env.\n")
@@ -103,21 +103,6 @@ Requirements:
 
 Write only the post. No preamble, no explanation."""
     return _generate(prompt)
-
-
-def run_guardrails(text: str) -> dict:
-    lowered = text.lower()
-    banned_hits = [p for p in BANNED_PHRASES if p in lowered]
-    parallelism_hits = [p for p in NEGATIVE_PARALLELISM_FLAGS if p in lowered]
-    em_dash_count = text.count(EM_DASH)
-    curly = any(ch in text for ch in CURLY_CHARS)
-    return {
-        "banned_phrases": banned_hits,
-        "negative_parallelisms": parallelism_hits,
-        "em_dash_count": em_dash_count,
-        "has_curly_quotes": curly,
-        "clean": not banned_hits and em_dash_count <= 1 and not curly,
-    }
 
 
 if __name__ == "__main__":

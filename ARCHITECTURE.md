@@ -32,11 +32,13 @@ pillars and platform cadence. Consumes Scout briefings and Analyst feedback.
 Outputs a weekly content plan with per-day assignments.
 
 ### Writer (Day 4 — quality / guardrails) [PARTIALLY BUILT]
-Drafts publication-ready content in John's voice. Loads `voice_profile.py`.
-Applies guardrails: voice-consistency scoring (LLM-as-a-judge against
-`REFERENCE_PASSAGES`), banned-phrase scan, length enforcement per platform,
-em-dash and curly-quote checks, negative-parallelism flags, tone check. Revises
-and re-checks up to 3 times. Returns a draft with scores and flags.
+Drafts publication-ready content in John's voice (`agents/writer.py`). Loads
+`voice_profile.py` and runs first-pass guardrails (`guardrails.py`): banned-
+phrase scan, em-dash and curly-quote checks, negative-parallelism flags. Uses
+its own model (`GEMINI_WRITER_MODEL`, pro-tier by default) since draft
+quality matters most here. Still TODO: voice-consistency scoring
+(LLM-as-a-judge against `REFERENCE_PASSAGES`), length enforcement per
+platform, tone check, and the revise-and-recheck loop (up to 3 times).
 
 ### Analyst (Day 5 — observability / iteration)
 Ingests engagement data (entered by John or via API later). Computes
@@ -73,18 +75,21 @@ Top-level router. Maps natural-language requests to agents:
 ```
 after-work-agent/
   .env                  (gitignored; key + model)
-  .gitignore
+  .gitignore            [BUILT]
   requirements.txt
   voice_profile.py      [BUILT] voice + anti-AI-tell layers, guardrail data
   check_setup.py        [BUILT] lists available models, verifies key
-  step1_writer.py       [BUILT] single-agent prototype
   agents/
+    __init__.py         [BUILT]
+    writer.py           [BUILT] promoted from step1_writer.py; uses
+                          GEMINI_WRITER_MODEL (pro-tier by default)
     scout.py            [TODO]
     strategist.py       [TODO]
-    writer.py           [TODO] promote step1 logic, add full guardrails
     analyst.py          [TODO]
     orchestrator.py     [TODO]
-  guardrails.py         [TODO] voice scoring, banned-phrase, length, tone
+  guardrails.py         [BUILT] first-pass checks (banned phrase, em-dash,
+                          curly quotes, parallelism flags); LLM-as-judge
+                          voice/tone scoring still TODO (Step 6)
   memory/
     *.json              [TODO] state files
   app.py                [TODO] Streamlit UI

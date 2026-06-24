@@ -13,11 +13,15 @@ Each step maps to a course concept for the capstone writeup.
 - Retry-with-backoff on 503; plain-English errors on quota/model/auth.
 - Model and key read from `.env`. Verified working end to end.
 
-## Phase 2 — Multi-agent [TODO]
+## Phase 2 — Multi-agent
 
-**Step 2: Refactor into a package.** Move shared code into `agents/` and a
-`guardrails.py`. Promote `step1_writer.py` logic into `agents/writer.py`. Keep
-`step1_writer.py` runnable as a smoke test or retire it.
+**Step 2: Refactor into a package.** [DONE] Shared code moved into `agents/`
+and `guardrails.py`. `step1_writer.py` logic promoted into `agents/writer.py`
+and the original file retired. Writer reads its model from
+`GEMINI_WRITER_MODEL` (defaults to a `-pro` model), separate from
+`GEMINI_MODEL` which other agents will use.
+
+[TODO below]
 
 **Step 3: Scout agent.** `agents/scout.py`. Gemini + Google Search grounding.
 Input: optional topic. Output: JSON briefing of 3-5 topics (headline, source,
