@@ -153,7 +153,23 @@
   reset (around midnight Pacific) and retry a single small call before
   the full weekly plan. The error message in `gemini_client.py` names the
   failing model and walks through all of this instead of guessing
-  per-minute or per-model-tier.
+  per-minute or per-model-tier. Root cause this time turned out to be
+  simpler than all of the above: the `.env` key belonged to a different,
+  unbilled Cloud project than the one billing was actually set up on -
+  confirmed via https://ai.dev/rate-limit showing 0 usage with >0 limits
+  (which rules out a real quota/billing problem and points at "wrong
+  project" instead). Fixed by creating a new key under the correct
+  project via "Use existing project" (not "Create API key in new
+  project") at https://aistudio.google.com/app/apikey.
+- `load_dotenv()` in `check_setup.py` and `gemini_client.py` now passes
+  `override=True`. Without it, python-dotenv will NOT overwrite a
+  `GEMINI_API_KEY` that is already set as a real Windows environment
+  variable (System/User variables, or a leftover `set GEMINI_API_KEY=...`
+  from an earlier cmd session) - editing `.env` then silently does
+  nothing, and the old key keeps getting used. This bit John directly
+  after swapping to a new key: `.env` was updated but `check_setup.py`
+  kept reporting the old key's last 4 chars. `override=True` makes `.env`
+  the single source of truth, matching the "key lives in .env" rule below.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model

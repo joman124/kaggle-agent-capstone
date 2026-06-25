@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 from google.genai import errors as genai_errors
 
-load_dotenv()
+load_dotenv(override=True)  # .env always wins over a stray system/user env var
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:

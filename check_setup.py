@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from google import genai
 
-load_dotenv()
+load_dotenv(override=True)  # .env always wins over a stray system/user env var
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
