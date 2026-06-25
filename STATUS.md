@@ -170,6 +170,20 @@
   after swapping to a new key: `.env` was updated but `check_setup.py`
   kept reporting the old key's last 4 chars. `override=True` makes `.env`
   the single source of truth, matching the "key lives in .env" rule below.
+- **Final root cause of the whole quota saga, found after fixing the two
+  bugs above**: it was neither pacing, nor wrong project, nor daily quota.
+  Once the correct, billed key was actually loading, Google's raw error
+  said plainly: "Your prepayment credits are depleted." This is a Gemini
+  API billing mode where a project pays from a prepaid balance (the "$10
+  on it" John mentioned) instead of open-ended pay-as-you-go, and that
+  balance had simply run out from real usage across this debugging
+  session. Fix: add more prepaid credit (or switch the project off prepay
+  billing) at https://ai.studio/projects. Lesson for next time: Google's
+  SDK error text is frequently already specific and correct - read it
+  first before reasoning about per-minute vs per-model vs per-day quota.
+  `gemini_client.py`'s `[QUOTA]` message now prints Google's raw text up
+  front and only adds the generic per-minute/per-project/per-day checklist
+  as a fallback when that text is not already self-explanatory.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model

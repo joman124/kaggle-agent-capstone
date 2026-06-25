@@ -79,33 +79,33 @@ def generate(model: str, prompt: str, system_instruction: str = None,
                 raise SystemExit("\n[AUTH] Your API key is invalid or lacks permission. Check .env.\n")
             raise
     if last_quota_error is not None:
+        raw = str(last_quota_error)
         total_wait = sum(15 * a for a in range(1, max_retries + 1))
-        raise SystemExit(
-            f"\n[QUOTA] Still rate-limited on model '{model}' after {max_retries}\n"
-            f"retries totaling {total_wait}s of backoff.\n"
-            "A real per-minute throttle clears in under 60 seconds, so failing\n"
-            "every attempt across this much wait time means this is NOT a\n"
-            "per-minute limit. It is also not specific to one model - this same\n"
-            "wall has now been hit on more than one model name, so it is not a\n"
-            "single model's quota either. That points at the key/project's\n"
-            "overall daily quota being used up, most likely from today's\n"
-            "earlier debugging runs (every failed attempt, including the ones\n"
-            "that eventually hit this error, used part of that quota too).\n"
-            "Next steps:\n"
-            "  1. Open https://ai.dev/rate-limit (Google's own error message links\n"
-            "     here) to see this key's real, current usage vs. its limit.\n"
-            "  2. In Google Cloud Console (not AI Studio's balance page), confirm a\n"
-            "     billing account is actually LINKED AND ENABLED for the specific\n"
-            "     Cloud project this key belongs to. An AI Studio prepaid balance is\n"
-            "     not the same thing as enabled Cloud Billing on that project - the\n"
-            "     free-tier daily caps apply until that link is active.\n"
-            "  3. If billing is confirmed active and this still happens, the daily\n"
-            "     quota may simply be exhausted for today from earlier debugging.\n"
-            "     Free-tier daily quotas reset around midnight Pacific time - try a\n"
-            "     single small request (e.g. 'python -m agents.scout') after that\n"
-            "     reset before running the full weekly plan again.\n"
-            f"Raw error from Google: {str(last_quota_error)[:300]}\n"
-        )
+        lines = [
+            f"\n[QUOTA] Still rate-limited on model '{model}' after {max_retries} retries",
+            f"totaling {total_wait}s of backoff.",
+            "",
+            "Google's own error message (read this first - it is often already",
+            "specific about the real cause, instead of just \"exceeded quota\"):",
+            f"  {raw[:300]}",
+            "",
+        ]
+        if "prepay" in raw.lower() or "depleted" in raw.lower():
+            lines += [
+                "That means your prepaid credits are depleted for this project's",
+                "billing. Fix: go to https://ai.studio/projects, add more prepaid",
+                "credit (or switch the project off prepay billing), then run again.",
+            ]
+        else:
+            lines += [
+                "If the message above is not already specific, check in order:",
+                "  1. https://ai.dev/rate-limit for this key's real usage vs. limit.",
+                "  2. Confirm Cloud Billing is linked AND enabled on this key's exact",
+                "     project (Google Cloud Console, not just an AI Studio balance).",
+                "  3. If quota is genuinely exhausted for today, free-tier daily caps",
+                "     reset around midnight Pacific - retry a single small call after.",
+            ]
+        raise SystemExit("\n".join(lines) + "\n")
     # Exhausted all retries on server errors
     raise SystemExit(
         f"\n[SERVER] Gemini was overloaded after {max_retries} attempts.\n"
