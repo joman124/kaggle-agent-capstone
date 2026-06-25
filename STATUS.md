@@ -134,18 +134,26 @@
   (guardrails.py, 8s default, override via `GEMINI_CALL_PACING_SECONDS` in
   `.env`) paces calls inside `draft_with_guardrails()` and between
   days/agents in the Orchestrator's `_handle_weekly_plan()` and
-  `_handle_essay()`. (2) A real per-model quota cap, confirmed in testing:
-  `GEMINI_WRITER_MODEL` defaults to `gemini-pro-latest`, a pro-tier model,
-  and the free tier gives pro-tier models a very low or zero daily quota
-  unless billing is actively linked to the SAME Cloud project the key
-  belongs to - an AI Studio prepaid balance is not automatically the same
-  thing. Diagnostic: if 429 persists after the full retry budget (5
-  attempts, 225s of cumulative backoff), it is case (2), not case (1) - a
-  real per-minute throttle would have cleared in well under that. Fix for
-  case (2): link billing to that key's Cloud project, or set
-  `GEMINI_WRITER_MODEL` in `.env` to a Flash model temporarily. The error
-  message in `gemini_client.py` now names the failing model and gives both
-  diagnostic paths instead of assuming it is always case (1).
+  `_handle_essay()`. (2) A real account/project-level daily quota cap.
+  Confirmed in testing on John's key: NOT specific to one model - both
+  `gemini-pro-latest` and `gemini-flash-latest` hit the identical wall
+  (429 persisting through the full 5-attempt, 225s retry budget on each).
+  A real per-minute throttle clears in well under 60s, so failing across
+  225s rules that out; failing on two different model tiers rules out a
+  single model's quota. Most likely cause: the key/project's overall daily
+  quota was used up by repeated debugging runs earlier the same day (every
+  failed attempt still counts against quota), combined with billing not
+  actually being linked/enabled on that key's specific Cloud project (an
+  AI Studio prepaid balance is not the same thing as enabled Cloud
+  Billing). Diagnostic: if 429 persists after the full retry budget
+  regardless of which model is set, it is case (2), not case (1). Fix:
+  check real usage at https://ai.dev/rate-limit, confirm Cloud Billing is
+  linked AND enabled on that project (not just an AI Studio balance), and
+  if quota is genuinely exhausted for the day, wait for the
+  reset (around midnight Pacific) and retry a single small call before
+  the full weekly plan. The error message in `gemini_client.py` names the
+  failing model and walks through all of this instead of guessing
+  per-minute or per-model-tier.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model

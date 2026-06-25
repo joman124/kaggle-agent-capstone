@@ -59,10 +59,10 @@ def generate(model: str, prompt: str, system_instruction: str = None,
             msg = str(e)
             if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
                 # Could be a short per-minute throttle (clears within
-                # ~60s) or a real per-model/per-day quota cap (will not
-                # clear no matter how long we wait). Back off first;
-                # if it never clears across the full retry budget, the
-                # message below points at the second case instead.
+                # ~60s) or a real account/project-level daily quota cap
+                # (will not clear no matter how long we wait). Back off
+                # first; if it never clears across the full retry budget,
+                # the message below points at the second case instead.
                 last_quota_error = e
                 wait = 15 * attempt  # 15s, 30s, 45s, ...
                 print(f"   [retry] rate-limited on '{model}', waiting {wait}s "
@@ -85,21 +85,25 @@ def generate(model: str, prompt: str, system_instruction: str = None,
             f"retries totaling {total_wait}s of backoff.\n"
             "A real per-minute throttle clears in under 60 seconds, so failing\n"
             "every attempt across this much wait time means this is NOT a\n"
-            "per-minute limit - it is a real quota cap on this specific model.\n"
-            "This usually means: the free tier gives pro-tier models (like\n"
-            "gemini-pro-latest) a very low or zero daily quota unless billing is\n"
-            "actively linked to the SAME Cloud project this key belongs to. An\n"
-            "AI Studio prepaid balance is not automatically the same thing as\n"
-            "linked Cloud billing for that project.\n"
+            "per-minute limit. It is also not specific to one model - this same\n"
+            "wall has now been hit on more than one model name, so it is not a\n"
+            "single model's quota either. That points at the key/project's\n"
+            "overall daily quota being used up, most likely from today's\n"
+            "earlier debugging runs (every failed attempt, including the ones\n"
+            "that eventually hit this error, used part of that quota too).\n"
             "Next steps:\n"
-            "  1. Check this model's actual quota at https://aistudio.google.com/app/apikey\n"
-            "     (look up the limit for the exact model named above, not the key in general).\n"
-            "  2. If it is a pro-tier model and shows 0 or very low free quota, either\n"
-            "     link billing to that key's Cloud project, or temporarily set the\n"
-            "     relevant .env model variable (e.g. GEMINI_WRITER_MODEL) to a Flash\n"
-            "     model, which has a much more generous free tier.\n"
-            "  3. Run 'python check_setup.py' to confirm the model name is exactly\n"
-            "     right and see what else your key can call.\n"
+            "  1. Open https://ai.dev/rate-limit (Google's own error message links\n"
+            "     here) to see this key's real, current usage vs. its limit.\n"
+            "  2. In Google Cloud Console (not AI Studio's balance page), confirm a\n"
+            "     billing account is actually LINKED AND ENABLED for the specific\n"
+            "     Cloud project this key belongs to. An AI Studio prepaid balance is\n"
+            "     not the same thing as enabled Cloud Billing on that project - the\n"
+            "     free-tier daily caps apply until that link is active.\n"
+            "  3. If billing is confirmed active and this still happens, the daily\n"
+            "     quota may simply be exhausted for today from earlier debugging.\n"
+            "     Free-tier daily quotas reset around midnight Pacific time - try a\n"
+            "     single small request (e.g. 'python -m agents.scout') after that\n"
+            "     reset before running the full weekly plan again.\n"
             f"Raw error from Google: {str(last_quota_error)[:300]}\n"
         )
     # Exhausted all retries on server errors
