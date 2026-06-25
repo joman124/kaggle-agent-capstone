@@ -12,6 +12,7 @@ Run:  python -m agents.orchestrator "What should I publish this week?"
 import json
 import re
 import sys
+import time
 
 _TOPIC_PATTERNS = [
     re.compile(r"\babout\s+(.+)$", re.IGNORECASE),
@@ -89,13 +90,21 @@ def _handle_weekly_plan() -> str:
     from agents.writer import write_linkedin_post
     from agents.substack_specialist import expand_to_essay
     from doc_output import append_to_doc
+    from guardrails import CALL_PACING_SECONDS
 
     briefing = find_topics()
     adjustments = get_pillar_adjustments()
     plan = plan_week(scout_briefing=briefing, pillar_adjustments=adjustments)
 
     lines = ["[ORCHESTRATOR] Weekly plan:"]
-    for day in plan:
+    for i, day in enumerate(plan):
+        if i > 0:
+            # Each day below makes several Gemini calls of its own (Writer's
+            # revise loop, plus the Substack expansion on Substack days);
+            # pause between days too so a 5-day plan does not burst the
+            # free tier's per-minute rate limit.
+            time.sleep(CALL_PACING_SECONDS)
+
         topic = day["topic"] or day["pillar"]
         lines.append(f"  {day['day']}: {day['pillar']} on {day['platform']} - {topic}")
 
@@ -103,6 +112,7 @@ def _handle_weekly_plan() -> str:
         if day["platform"] == "linkedin":
             append_to_doc("LinkedIn Posts.docx", topic, post)
         else:
+            time.sleep(CALL_PACING_SECONDS)
             essay = expand_to_essay(post, topic)
             append_to_doc("Substack Essays.docx", topic, essay)
 
@@ -134,6 +144,7 @@ def _handle_essay(topic) -> str:
     from agents.writer import write_linkedin_post
     from agents.substack_specialist import expand_to_essay
     from doc_output import append_to_doc
+    from guardrails import CALL_PACING_SECONDS
 
     if not topic:
         briefing = find_topics()
@@ -142,6 +153,7 @@ def _handle_essay(topic) -> str:
         topic = briefing[0]["suggested_angle"]
 
     post = write_linkedin_post(topic)
+    time.sleep(CALL_PACING_SECONDS)  # writer's draft+judge calls, then substack specialist's below
     essay = expand_to_essay(post, topic)
     append_to_doc("Substack Essays.docx", topic, essay)
     return f"[ORCHESTRATOR] Essay saved to 'Substack Essays.docx':\n\n{essay}"

@@ -125,6 +125,16 @@
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
 - `google-genai`, not `google-generativeai`.
 - Free tier rate-limits hard; keep retry/backoff and pacing.
+- A "[QUOTA] ... limit: 0" message on a key with real billing/quota almost
+  always means a per-minute rate limit got hit, not a dead key - a new key
+  will reproduce the same error. The weekly-plan pipeline alone can fire
+  dozens of Gemini calls (Writer's revise loop x3 attempts x2 calls/attempt,
+  x5 days, plus Substack expansion). Fixed by: `gemini_client.generate()`
+  now retries 429/RESOURCE_EXHAUSTED with backoff instead of failing
+  immediately, and `CALL_PACING_SECONDS` (guardrails.py, 8s default,
+  override via `GEMINI_CALL_PACING_SECONDS` in `.env`) paces calls inside
+  `draft_with_guardrails()` and between days/agents in the Orchestrator's
+  `_handle_weekly_plan()` and `_handle_essay()`.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model

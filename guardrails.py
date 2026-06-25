@@ -9,8 +9,15 @@ Specialist.
 
 import json
 import os
+import time
 
 from voice_profile import BANNED_PHRASES, NEGATIVE_PARALLELISM_FLAGS, REFERENCE_PASSAGES
+
+# Pause between back-to-back Gemini calls so a single draft_with_guardrails()
+# run (draft + judge, possibly x3 attempts) does not burst past the free
+# tier's per-minute rate limit. Override with GEMINI_CALL_PACING_SECONDS in
+# .env if your tier allows faster calls (or needs more room).
+CALL_PACING_SECONDS = float(os.getenv("GEMINI_CALL_PACING_SECONDS", "8"))
 
 EM_DASH = chr(0x2014)
 CURLY_CHARS = [chr(0x2018), chr(0x2019), chr(0x201C), chr(0x201D)]
@@ -142,8 +149,11 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
     feedback = None
     history = []
     for attempt in range(1, max_attempts + 1):
+        if attempt > 1:
+            time.sleep(CALL_PACING_SECONDS)
         prompt = build_prompt(feedback)
         text = generate(model, prompt, system_instruction=system_instruction)
+        time.sleep(CALL_PACING_SECONDS)  # draft call, then the judge call below
         result = evaluate(text, max_em_dashes=max_em_dashes, min_voice_score=min_voice_score)
 
         log_decision(

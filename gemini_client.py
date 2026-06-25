@@ -27,8 +27,10 @@ client = genai.Client(api_key=API_KEY)
 def generate(model: str, prompt: str, system_instruction: str = None,
              tools: list = None, max_retries: int = 5) -> str:
     """Call Gemini with automatic retry on transient server errors (503/
-    overload). Raises SystemExit with a plain-English message on quota
-    (429), bad model name (404), or auth errors instead of a raw traceback."""
+    overload) and on 429 rate-limit errors (most 429s are "too many
+    requests per minute", not "zero quota" - worth a backoff-and-retry
+    before giving up). Raises SystemExit with a plain-English message on
+    bad model name (404) or auth errors instead of a raw traceback."""
     config_kwargs = {}
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction
@@ -36,6 +38,7 @@ def generate(model: str, prompt: str, system_instruction: str = None,
         config_kwargs["tools"] = tools
 
     last_server_error = None
+    last_quota_error = None
     for attempt in range(1, max_retries + 1):
         try:
             response = client.models.generate_content(
@@ -55,12 +58,14 @@ def generate(model: str, prompt: str, system_instruction: str = None,
         except genai_errors.ClientError as e:
             msg = str(e)
             if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
-                raise SystemExit(
-                    "\n[QUOTA] Your API key has no available quota (limit: 0).\n"
-                    "Fix: create a NEW key via 'Create API key in new project' at\n"
-                    "aistudio.google.com, put it in .env, and rerun. If a fresh key\n"
-                    "still shows limit: 0, enable billing on the Cloud project.\n"
-                )
+                # Usually a per-minute rate limit, not zero total quota.
+                # Back off and retry before treating it as fatal.
+                last_quota_error = e
+                wait = 15 * attempt  # 15s, 30s, 45s, ...
+                print(f"   [retry] rate-limited, waiting {wait}s "
+                      f"(attempt {attempt}/{max_retries})")
+                time.sleep(wait)
+                continue
             if "NOT_FOUND" in msg or "404" in msg:
                 raise SystemExit(
                     f"\n[MODEL] '{model}' is not available to your key.\n"
@@ -70,6 +75,17 @@ def generate(model: str, prompt: str, system_instruction: str = None,
             if "PERMISSION_DENIED" in msg or "API_KEY_INVALID" in msg:
                 raise SystemExit("\n[AUTH] Your API key is invalid or lacks permission. Check .env.\n")
             raise
+    if last_quota_error is not None:
+        raise SystemExit(
+            f"\n[QUOTA] Still rate-limited after {max_retries} retries.\n"
+            "This is most likely a per-minute limit, not a dead key - a new key or\n"
+            "billing will not fix a per-minute limit. Wait a minute and run again with\n"
+            "fewer requests in flight (e.g. a single agent instead of the full weekly\n"
+            "plan). If this keeps happening even for a single small request, check\n"
+            "your real quota at https://aistudio.google.com/app/apikey and confirm\n"
+            "billing is linked to the SAME Cloud project that key belongs to.\n"
+            f"Raw error from Google: {str(last_quota_error)[:300]}\n"
+        )
     # Exhausted all retries on server errors
     raise SystemExit(
         f"\n[SERVER] Gemini was overloaded after {max_retries} attempts.\n"
