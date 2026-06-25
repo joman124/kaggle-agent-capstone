@@ -27,10 +27,10 @@ client = genai.Client(api_key=API_KEY)
 def generate(model: str, prompt: str, system_instruction: str = None,
              tools: list = None, max_retries: int = 5) -> str:
     """Call Gemini with automatic retry on transient server errors (503/
-    overload) and on 429 rate-limit errors (most 429s are "too many
-    requests per minute", not "zero quota" - worth a backoff-and-retry
-    before giving up). Raises SystemExit with a plain-English message on
-    bad model name (404) or auth errors instead of a raw traceback."""
+    overload) and on 429 rate-limit errors (a backoff-and-retry is worth it
+    in case this is a short per-minute throttle rather than a real quota
+    cap). Raises SystemExit with a plain-English message on bad model name
+    (404) or auth errors instead of a raw traceback."""
     config_kwargs = {}
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction
@@ -58,11 +58,14 @@ def generate(model: str, prompt: str, system_instruction: str = None,
         except genai_errors.ClientError as e:
             msg = str(e)
             if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
-                # Usually a per-minute rate limit, not zero total quota.
-                # Back off and retry before treating it as fatal.
+                # Could be a short per-minute throttle (clears within
+                # ~60s) or a real per-model/per-day quota cap (will not
+                # clear no matter how long we wait). Back off first;
+                # if it never clears across the full retry budget, the
+                # message below points at the second case instead.
                 last_quota_error = e
                 wait = 15 * attempt  # 15s, 30s, 45s, ...
-                print(f"   [retry] rate-limited, waiting {wait}s "
+                print(f"   [retry] rate-limited on '{model}', waiting {wait}s "
                       f"(attempt {attempt}/{max_retries})")
                 time.sleep(wait)
                 continue
@@ -76,14 +79,27 @@ def generate(model: str, prompt: str, system_instruction: str = None,
                 raise SystemExit("\n[AUTH] Your API key is invalid or lacks permission. Check .env.\n")
             raise
     if last_quota_error is not None:
+        total_wait = sum(15 * a for a in range(1, max_retries + 1))
         raise SystemExit(
-            f"\n[QUOTA] Still rate-limited after {max_retries} retries.\n"
-            "This is most likely a per-minute limit, not a dead key - a new key or\n"
-            "billing will not fix a per-minute limit. Wait a minute and run again with\n"
-            "fewer requests in flight (e.g. a single agent instead of the full weekly\n"
-            "plan). If this keeps happening even for a single small request, check\n"
-            "your real quota at https://aistudio.google.com/app/apikey and confirm\n"
-            "billing is linked to the SAME Cloud project that key belongs to.\n"
+            f"\n[QUOTA] Still rate-limited on model '{model}' after {max_retries}\n"
+            f"retries totaling {total_wait}s of backoff.\n"
+            "A real per-minute throttle clears in under 60 seconds, so failing\n"
+            "every attempt across this much wait time means this is NOT a\n"
+            "per-minute limit - it is a real quota cap on this specific model.\n"
+            "This usually means: the free tier gives pro-tier models (like\n"
+            "gemini-pro-latest) a very low or zero daily quota unless billing is\n"
+            "actively linked to the SAME Cloud project this key belongs to. An\n"
+            "AI Studio prepaid balance is not automatically the same thing as\n"
+            "linked Cloud billing for that project.\n"
+            "Next steps:\n"
+            "  1. Check this model's actual quota at https://aistudio.google.com/app/apikey\n"
+            "     (look up the limit for the exact model named above, not the key in general).\n"
+            "  2. If it is a pro-tier model and shows 0 or very low free quota, either\n"
+            "     link billing to that key's Cloud project, or temporarily set the\n"
+            "     relevant .env model variable (e.g. GEMINI_WRITER_MODEL) to a Flash\n"
+            "     model, which has a much more generous free tier.\n"
+            "  3. Run 'python check_setup.py' to confirm the model name is exactly\n"
+            "     right and see what else your key can call.\n"
             f"Raw error from Google: {str(last_quota_error)[:300]}\n"
         )
     # Exhausted all retries on server errors

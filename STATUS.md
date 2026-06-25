@@ -125,16 +125,27 @@
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
 - `google-genai`, not `google-generativeai`.
 - Free tier rate-limits hard; keep retry/backoff and pacing.
-- A "[QUOTA] ... limit: 0" message on a key with real billing/quota almost
-  always means a per-minute rate limit got hit, not a dead key - a new key
-  will reproduce the same error. The weekly-plan pipeline alone can fire
-  dozens of Gemini calls (Writer's revise loop x3 attempts x2 calls/attempt,
-  x5 days, plus Substack expansion). Fixed by: `gemini_client.generate()`
-  now retries 429/RESOURCE_EXHAUSTED with backoff instead of failing
-  immediately, and `CALL_PACING_SECONDS` (guardrails.py, 8s default,
-  override via `GEMINI_CALL_PACING_SECONDS` in `.env`) paces calls inside
-  `draft_with_guardrails()` and between days/agents in the Orchestrator's
-  `_handle_weekly_plan()` and `_handle_essay()`.
+- A "[QUOTA]"/429 message can mean two different things and they need
+  different fixes. (1) A per-minute throttle from bursting too many calls
+  at once - clears in under 60s. The weekly-plan pipeline alone can fire
+  dozens of calls (Writer's revise loop x3 attempts x2 calls/attempt, x5
+  days, plus Substack expansion), so `gemini_client.generate()` retries
+  429/RESOURCE_EXHAUSTED with backoff and `CALL_PACING_SECONDS`
+  (guardrails.py, 8s default, override via `GEMINI_CALL_PACING_SECONDS` in
+  `.env`) paces calls inside `draft_with_guardrails()` and between
+  days/agents in the Orchestrator's `_handle_weekly_plan()` and
+  `_handle_essay()`. (2) A real per-model quota cap, confirmed in testing:
+  `GEMINI_WRITER_MODEL` defaults to `gemini-pro-latest`, a pro-tier model,
+  and the free tier gives pro-tier models a very low or zero daily quota
+  unless billing is actively linked to the SAME Cloud project the key
+  belongs to - an AI Studio prepaid balance is not automatically the same
+  thing. Diagnostic: if 429 persists after the full retry budget (5
+  attempts, 225s of cumulative backoff), it is case (2), not case (1) - a
+  real per-minute throttle would have cleared in well under that. Fix for
+  case (2): link billing to that key's Cloud project, or set
+  `GEMINI_WRITER_MODEL` in `.env` to a Flash model temporarily. The error
+  message in `gemini_client.py` now names the failing model and gives both
+  diagnostic paths instead of assuming it is always case (1).
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model
