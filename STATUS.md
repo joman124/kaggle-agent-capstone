@@ -111,7 +111,49 @@
   submit.
 - LinkedIn account will be linked by John. Substack page created
   (`drjohnmansoor`) but no real posts published yet on either platform.
-- $10 API budget set; usage negligible so far.
+- $10 prepaid API budget depleted by the quota-debugging session on
+  June 25; needs topping up at https://ai.studio/projects before the next
+  real run (see gotchas below for the full story).
+
+## Added (not in the original 12-step plan)
+- **Weekly draft generation is now scheduled, not manual.**
+  `run_weekly.bat` (project root) activates the venv and runs
+  `python -m agents.orchestrator "What should I publish this week?"`,
+  appending output to `logs\weekly_run.log` so John can check what
+  happened without a terminal open. Set up as a Windows Task Scheduler
+  job (Friday afternoon, see setup steps below) so Scout/Strategist/
+  Analyst/Writer/Substack Specialist run automatically and drafts are
+  waiting in the .docx files for review. This does NOT publish anything
+  to LinkedIn or Substack - John still reviews and posts manually, by
+  design (see CLAUDE.md: "John reviews and posts. The system does
+  everything else."). Direct auto-publish was explicitly considered and
+  deferred: Substack has no official posting API (only fragile,
+  ToS-risky unofficial methods), and LinkedIn's posting API requires an
+  approved developer app - both also bypass the human review step that
+  is the whole point of the voice-guardrail system, so this needs a
+  deliberate future decision, not a default.
+
+  **One-time Windows Task Scheduler setup** (do this once on John's
+  machine):
+  1. Press the Windows key, type "Task Scheduler", open it.
+  2. In the Actions pane (right side), click "Create Basic Task...".
+  3. Name it "After Work Weekly Content Plan", click Next.
+  4. Trigger: choose "Weekly", click Next. Set the start date/time (e.g.
+     next Friday, 3:00 PM), check "Friday", leave recurrence at every 1
+     week, click Next.
+  5. Action: choose "Start a program", click Next.
+  6. Program/script: Browse to
+     `C:\Projects\kaggle-agent-capstone\run_weekly.bat`. Leave
+     "Add arguments" and "Start in" blank. Click Next, then Finish.
+  7. Optional: right-click the new task in the Task Scheduler list >
+     Properties > General tab > check "Run whether user is logged on or
+     not" if you want it to run even when you are not logged into
+     Windows (it will prompt for your Windows password once to save it).
+     If left unchecked, the task only runs while you are logged in,
+     which is fine for most setups.
+  Each run draws on the prepaid Gemini balance - keep an eye on
+  https://ai.studio/projects so a scheduled run does not silently fail
+  the same way the manual runs did during the June 25 debugging session.
 
 ## Resolved decisions
 - `step1_writer.py` retired, folded into `agents/writer.py`. (was open)
