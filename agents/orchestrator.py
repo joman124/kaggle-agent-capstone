@@ -101,7 +101,7 @@ def _handle_weekly_plan() -> str:
         if i > 0:
             # Each day below makes several Gemini calls of its own (Writer's
             # revise loop, plus the Substack expansion on Substack days);
-            # pause between days too so a 5-day plan does not burst the
+            # pause between days too so a 7-day plan does not burst the
             # free tier's per-minute rate limit.
             time.sleep(CALL_PACING_SECONDS)
 

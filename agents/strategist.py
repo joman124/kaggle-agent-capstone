@@ -24,8 +24,13 @@ PILLARS = [
     "Applied Philosophy",
     "Current Events",
 ]
-# Platform cadence target: Substack ~1 essay/week, LinkedIn 3-4 posts/week.
-PLATFORM_PATTERN = ["linkedin", "substack", "linkedin", "linkedin", "substack"]
+# Platform cadence target: Substack ~2 essays/week, LinkedIn 5 posts/week.
+# Raised from 3 LinkedIn + 2 Substack (5/week) to 5 LinkedIn + 2 Substack
+# (7/week) to increase total weekly volume. Substack held steady rather than
+# also increased: essays are long-form and the most expensive thing for John
+# to review per item, so the extra volume goes into LinkedIn, which is cheap
+# to draft and quick to review.
+PLATFORM_PATTERN = ["linkedin", "linkedin", "substack", "linkedin", "linkedin", "linkedin", "substack"]
 ROLLING_WINDOW_DAYS = 30
 
 
@@ -67,7 +72,7 @@ def _match_scout_topic(pillar: str, used_headlines: set, scout_briefing: list):
     return None
 
 
-def plan_week(scout_briefing: list = None, num_days: int = 5,
+def plan_week(scout_briefing: list = None, num_days: int = 7,
               pillar_adjustments: dict = None) -> list:
     """Build a balanced content plan. Least-used pillars in the rolling
     window go first; platform follows a fixed cadence pattern so Strategist

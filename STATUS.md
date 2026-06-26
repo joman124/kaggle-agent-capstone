@@ -39,15 +39,37 @@
 - **Step 4 done.** `agents/strategist.py`: pure logic, no Gemini calls.
   Reads `memory/content_history.json`, computes a rolling 30-day pillar
   distribution, writes it to `memory/pillar_tracker.json`, ranks pillars
-  least-used-first, applies a fixed platform cadence (3 LinkedIn :
-  2 Substack per 5-day plan, deliberately not overridden by Scout's
-  suggested_platform so Strategist keeps platform-balance control),
-  optionally matches a Scout briefing topic to each day's pillar, and
-  writes the plan to `memory/calendar.json`. Verified locally (no API key
-  needed): empty history produces all 5 pillars exactly once with no
-  repeats; a mock Scout briefing's matching day picks up that topic's
-  angle/headline while platform still follows Strategist's own cadence.
-  `memory/` seeded with empty/zeroed JSON and committed.
+  least-used-first, applies a fixed platform cadence (originally 3 LinkedIn :
+  2 Substack per 5-day plan -- raised since, see below), deliberately not
+  overridden by Scout's suggested_platform so Strategist keeps
+  platform-balance control. Optionally matches a Scout briefing topic to
+  each day's pillar, and writes the plan to `memory/calendar.json`.
+  Verified locally (no API key needed): empty history produces all 5
+  pillars exactly once with no repeats; a mock Scout briefing's matching
+  day picks up that topic's angle/headline while platform still follows
+  Strategist's own cadence. `memory/` seeded with empty/zeroed JSON and
+  committed.
+- **Cadence raised (June 26).** John asked about running the weekly batch
+  4x/week; the actual goal turned out to be more total volume, not more
+  frequent scheduling. A scheduling change alone would not have done
+  anything, since nothing yet writes back to `memory/content_history.json`
+  after a real post goes out (Strategist's rolling-window balance has no
+  way to see what was actually published, so re-running the same week's
+  batch produces near-identical output -- see "Open decisions" below).
+  The real fix was in `agents/strategist.py`: `PLATFORM_PATTERN` went from
+  5 days (3 LinkedIn : 2 Substack) to 7 days (5 LinkedIn : 2 Substack), and
+  `plan_week()`'s `num_days` default went from 5 to 7 to match. Substack
+  was deliberately held at 2/week rather than also increased -- essays are
+  long-form and the most expensive thing for John to review per item, so
+  the added volume went into LinkedIn, which is cheap to draft and quick
+  to review. The Orchestrator needed no change: `_handle_weekly_plan()`
+  calls `plan_week()` with no explicit `num_days`, so the new default
+  propagates automatically. Verified locally: empty history now produces
+  exactly 5 linkedin + 2 substack across 7 days. Note: this also means
+  roughly 40% more Gemini calls per weekly run (7 days of drafting instead
+  of 5, each with up to 3 revise attempts) - watch the prepaid balance at
+  https://ai.studio/projects more closely than before, given the June 25
+  depletion.
 - **Step 5 done.** `agents/orchestrator.py`: `route()` classifies a
   natural-language request into an intent + topic via deterministic
   keyword matching (no Gemini call) so it is fully unit-tested without an
@@ -162,6 +184,16 @@
 
 ## Open decisions
 - Per-content-type temperature tuning (essays lower, notes higher).
+- Nothing currently writes a "published" event back to
+  `memory/content_history.json` once John actually posts something - it is
+  still seeded empty and stays empty. Strategist's rolling-30-day pillar
+  balance is therefore reading an always-empty history, so every
+  `plan_week()` call effectively starts the ranking from zero rather than
+  reacting to real-world publishing. This was a pre-existing gap, but it
+  matters more now that weekly volume went from 5 to 7 posts/week: needs a
+  decision on who/what writes to that file (John manually after posting,
+  or a future "mark as published" step) before the balancing logic is
+  doing anything real.
 
 ## Known gotchas (do not relearn these)
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
