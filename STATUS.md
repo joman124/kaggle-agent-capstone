@@ -309,6 +309,17 @@ one `route` entry from the Orchestrator and one `draft_attempt` entry per
 Writer/Substack Specialist draft, with voice_score and tone on each. After
 that, Step 9: Streamlit UI.
 
+**Separately, a new chat (June 27) is starting on the actual draft-to-post
+flow.** See `PUBLISHING_HANDOFF.md` for the full brief -- it covers what
+that chat needs to know, the real LinkedIn API vs. Substack-has-no-API
+constraint, the missing structured draft store
+(`memory/drafts.json`, not built yet), and three decisions it needs from
+John before writing any publish code (manual approval gate, Substack's
+ToS risk, whether the unattended weekly batch should ever auto-publish).
+This is explicitly scoped in `CAPSTONE_REQUIREMENTS.md` as a future
+direction for the writeup, not a required deliverable -- it does not block
+Steps 9-12 below.
+
 ## Voice feedback still pending
 John has not yet given line-level feedback on whether the generated voice fully
 matches his. Worth getting before locking the Writer, since the voice profile

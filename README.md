@@ -10,6 +10,8 @@ Drop these files into your project repo, then open it in Claude Code and say:
 4. **BUILD_PLAN.md** — the 12-step sequence; Steps 1-2 done, 3-12 to go.
 5. **CAPSTONE_REQUIREMENTS.md** — Kaggle deliverables, rubric, writeup + video.
 6. **STATUS.md** — exactly where things stand right now.
+7. **PUBLISHING_HANDOFF.md** — brief for the chat building the draft-to-post
+   flow (LinkedIn/Substack publishing); read this only if that is the task.
 
 ## Working code (already built, Steps 1-2)
 - **voice_profile.py** — voice + anti-AI-tell layers, guardrail data.
