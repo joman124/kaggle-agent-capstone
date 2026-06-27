@@ -70,6 +70,20 @@
   of 5, each with up to 3 revise attempts) - watch the prepaid balance at
   https://ai.studio/projects more closely than before, given the June 25
   depletion.
+- **Credit-usage fix (June 26), found while answering "how do I minimize
+  credits."** Every Substack day was paying for two full pro-tier
+  draft_with_guardrails() revise loops, not one: `_handle_weekly_plan()`
+  and `_handle_essay()` both generated a full LinkedIn-post seed through
+  the Writer's complete guardrail loop, then threw that post away (never
+  saved to a docx) and fed it into the Substack Specialist's own complete
+  guardrail loop for the essay. Only the essay is ever shown to John, so
+  gating the seed too was pure waste. Fixed by adding
+  `agents/writer.py`'s `generate_seed_post()`: one ungated Gemini call, no
+  judge, no revise attempts. Both Orchestrator call sites now use it for
+  the throwaway seed and keep the essay's own full guardrail loop as the
+  real quality gate. Roughly halves the cost of every Substack day with no
+  change to what John actually sees. Verified by stubbing
+  `gemini_client.generate`: `generate_seed_post()` makes exactly one call.
 - **Step 5 done.** `agents/orchestrator.py`: `route()` classifies a
   natural-language request into an intent + topic via deterministic
   keyword matching (no Gemini call) so it is fully unit-tested without an

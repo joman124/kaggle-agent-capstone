@@ -87,7 +87,7 @@ def _handle_weekly_plan() -> str:
     from agents.scout import find_topics
     from agents.strategist import plan_week
     from agents.analyst import get_pillar_adjustments
-    from agents.writer import write_linkedin_post
+    from agents.writer import write_linkedin_post, generate_seed_post
     from agents.substack_specialist import expand_to_essay
     from doc_output import append_to_doc
     from guardrails import CALL_PACING_SECONDS
@@ -108,12 +108,16 @@ def _handle_weekly_plan() -> str:
         topic = day["topic"] or day["pillar"]
         lines.append(f"  {day['day']}: {day['pillar']} on {day['platform']} - {topic}")
 
-        post = write_linkedin_post(topic)
         if day["platform"] == "linkedin":
+            post = write_linkedin_post(topic)
             append_to_doc("LinkedIn Posts.docx", topic, post)
         else:
+            # The seed post here is never shown to John, so skip its
+            # guardrail loop entirely - only the essay below is the real
+            # deliverable, and it runs its own full revise loop.
+            seed = generate_seed_post(topic)
             time.sleep(CALL_PACING_SECONDS)
-            essay = expand_to_essay(post, topic)
+            essay = expand_to_essay(seed, topic)
             append_to_doc("Substack Essays.docx", topic, essay)
 
     lines.append("Drafts saved to 'LinkedIn Posts.docx' and 'Substack Essays.docx'.")
@@ -141,7 +145,7 @@ def _handle_linkedin_post(topic) -> str:
 
 def _handle_essay(topic) -> str:
     from agents.scout import find_topics
-    from agents.writer import write_linkedin_post
+    from agents.writer import generate_seed_post
     from agents.substack_specialist import expand_to_essay
     from doc_output import append_to_doc
     from guardrails import CALL_PACING_SECONDS
@@ -152,8 +156,10 @@ def _handle_essay(topic) -> str:
             return "[ORCHESTRATOR] Scout found nothing to react to. Try again with a specific topic."
         topic = briefing[0]["suggested_angle"]
 
-    post = write_linkedin_post(topic)
-    time.sleep(CALL_PACING_SECONDS)  # writer's draft+judge calls, then substack specialist's below
+    # The seed post is never shown to John, so skip its guardrail loop -
+    # only the essay below is the real deliverable.
+    post = generate_seed_post(topic)
+    time.sleep(CALL_PACING_SECONDS)  # seed call, then substack specialist's draft+judge calls below
     essay = expand_to_essay(post, topic)
     append_to_doc("Substack Essays.docx", topic, essay)
     return f"[ORCHESTRATOR] Essay saved to 'Substack Essays.docx':\n\n{essay}"

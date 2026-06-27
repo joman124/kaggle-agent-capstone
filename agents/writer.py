@@ -53,6 +53,18 @@ Requirements:
 Write only the post. No preamble, no explanation."""
 
 
+def generate_seed_post(topic: str) -> str:
+    """One ungated Gemini call, no guardrail loop. For callers (the
+    Substack Specialist's expand_to_essay) that only need raw seed
+    material and never show this text to John directly - the essay it
+    feeds into runs its own full draft_with_guardrails() pass, so gating
+    this draft too would pay for a second pro-tier revise loop on text
+    nobody reads."""
+    from gemini_client import generate
+
+    return generate(MODEL, _build_linkedin_prompt(topic), system_instruction=SYSTEM_INSTRUCTION)
+
+
 def draft_linkedin_post(topic: str, max_attempts: int = 3) -> dict:
     """Generate-evaluate-revise loop for a LinkedIn post. Returns
     {"text", "attempts", "evaluation", "history"} from draft_with_guardrails."""
