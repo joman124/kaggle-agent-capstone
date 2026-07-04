@@ -70,6 +70,7 @@ def draft_essay(linkedin_post: str, topic: str = None, max_attempts: int = 3) ->
         max_em_dashes=ESSAY_RULES["max_em_dashes"],
         max_attempts=max_attempts,
         agent="substack_specialist",
+        temperature=ESSAY_RULES["temperature"],
     )
 
 

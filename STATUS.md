@@ -195,9 +195,29 @@
 - `step1_writer.py` retired, folded into `agents/writer.py`. (was open)
 - Writer uses a `-pro` model (`GEMINI_WRITER_MODEL`, default
   `gemini-pro-latest`); other agents use `GEMINI_MODEL` (Flash). (was open)
+- **Per-content-type temperature tuning (June 27). (was open)** Each
+  `PLATFORM_RULES` entry now carries a `temperature`: essays 0.6 (cooler,
+  for control and consistency across 800-1500 words), LinkedIn posts 0.8,
+  short notes 0.95 (hotter, to stay punchy and varied). `generate()` takes
+  an optional `temperature`; Writer and Substack Specialist pass their
+  platform's value through `draft_with_guardrails()`. The voice judge
+  always runs at temperature 0.0 (it scores, does not generate, so the
+  same draft should not swing pass/fail between runs).
+- **Antithesis / "it's not X, it's Y" is now a hard guardrail fail (June
+  27). (John flagged it still leaking)** The old `NEGATIVE_PARALLELISM_FLAGS`
+  only *flagged* parallelism for review and were plain substrings, so the
+  structural reversal slipped through and the revise loop was never forced
+  to fix it. Added `voice_profile.ANTITHESIS_PATTERNS` (7 regexes for the
+  reversal frames) and `guardrails.find_antithesis()`; any match now fails
+  `run_guardrails()` like a banned phrase and feeds an explicit rewrite
+  instruction into the next revise attempt. Patterns require the
+  reassertion pivot, so John's own trailing negations ("..., not from the
+  other side of it") do NOT trip it -- verified against all three
+  REFERENCE_PASSAGES (clean) plus 7 known tells (all caught) and 5
+  legit-negation controls (all clean). Anti-AI-tell prompt rule 5 was also
+  sharpened to name the exact frame.
 
 ## Open decisions
-- Per-content-type temperature tuning (essays lower, notes higher).
 - Nothing currently writes a "published" event back to
   `memory/content_history.json` once John actually posts something - it is
   still seeded empty and stays empty. Strategist's rolling-30-day pillar

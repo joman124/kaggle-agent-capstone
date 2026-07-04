@@ -62,7 +62,9 @@ def generate_seed_post(topic: str) -> str:
     nobody reads."""
     from gemini_client import generate
 
-    return generate(MODEL, _build_linkedin_prompt(topic), system_instruction=SYSTEM_INSTRUCTION)
+    return generate(MODEL, _build_linkedin_prompt(topic),
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=LINKEDIN_RULES["temperature"])
 
 
 def draft_linkedin_post(topic: str, max_attempts: int = 3) -> dict:
@@ -75,6 +77,7 @@ def draft_linkedin_post(topic: str, max_attempts: int = 3) -> dict:
         max_em_dashes=LINKEDIN_RULES["max_em_dashes"],
         max_attempts=max_attempts,
         agent="writer",
+        temperature=LINKEDIN_RULES["temperature"],
     )
 
 

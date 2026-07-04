@@ -9,9 +9,14 @@ Specialist.
 
 import json
 import os
+import re
 import time
 
-from voice_profile import BANNED_PHRASES, NEGATIVE_PARALLELISM_FLAGS, REFERENCE_PASSAGES
+from voice_profile import (BANNED_PHRASES, NEGATIVE_PARALLELISM_FLAGS,
+                           REFERENCE_PASSAGES, ANTITHESIS_PATTERNS)
+
+# Compiled once. Case-insensitive so "It's not..." and "it's not..." both hit.
+_ANTITHESIS_RES = [re.compile(p, re.IGNORECASE) for p in ANTITHESIS_PATTERNS]
 
 # Pause between back-to-back Gemini calls so a single draft_with_guardrails()
 # run (draft + judge, possibly x3 attempts) does not burst past the free
@@ -40,25 +45,43 @@ JUDGE_SYSTEM_INSTRUCTION = (
 )
 
 
+def find_antithesis(text: str) -> list:
+    """Return the antithesis / 'it's not X, it's Y' reversal constructions
+    found in text (one representative match per pattern). This is the single
+    most persistent AI rhythm and John wants it gone, so run_guardrails
+    treats any hit as a hard fail -- unlike the softer
+    NEGATIVE_PARALLELISM_FLAGS, which only flag for review."""
+    hits = []
+    for rgx in _ANTITHESIS_RES:
+        m = rgx.search(text)
+        if m:
+            hits.append(" ".join(m.group(0).split()))
+    return hits
+
+
 def run_guardrails(text: str, max_em_dashes: int = 1) -> dict:
-    """Scan generated text for banned phrases, AI-tell punctuation, and
-    possible negative-parallelism rhythm. Returns a dict of findings plus
-    a 'clean' flag (only banned phrases, em-dash overuse, and curly quotes
-    cause a fail; parallelism is flagged for review, not auto-rejected).
-    max_em_dashes defaults to the LinkedIn rule; pass a platform's own
+    """Scan generated text for banned phrases, antithesis reversals, AI-tell
+    punctuation, and possible negative-parallelism rhythm. Returns a dict of
+    findings plus a 'clean' flag. Banned phrases, antithesis reversals,
+    em-dash overuse, and curly quotes cause a fail; the softer parallelism
+    fragments are flagged for review, not auto-rejected. max_em_dashes
+    defaults to the LinkedIn rule; pass a platform's own
     PLATFORM_RULES[...]['max_em_dashes'] for other formats (e.g. essays
     allow more)."""
     lowered = text.lower()
     banned_hits = [p for p in BANNED_PHRASES if p in lowered]
     parallelism_hits = [p for p in NEGATIVE_PARALLELISM_FLAGS if p in lowered]
+    antithesis_hits = find_antithesis(text)
     em_dash_count = text.count(EM_DASH)
     curly = any(ch in text for ch in CURLY_CHARS)
     return {
         "banned_phrases": banned_hits,
         "negative_parallelisms": parallelism_hits,
+        "antithesis": antithesis_hits,
         "em_dash_count": em_dash_count,
         "has_curly_quotes": curly,
-        "clean": not banned_hits and em_dash_count <= max_em_dashes and not curly,
+        "clean": (not banned_hits and not antithesis_hits
+                  and em_dash_count <= max_em_dashes and not curly),
     }
 
 
@@ -95,7 +118,10 @@ DRAFT TO SCORE:
 {text}
 
 Score the draft against the reference voice above."""
-    raw = generate(model or JUDGE_MODEL, prompt, system_instruction=JUDGE_SYSTEM_INSTRUCTION)
+    # Judge runs deterministic: it scores, it does not generate, so a fixed
+    # low temperature keeps the same draft from swinging pass/fail run to run.
+    raw = generate(model or JUDGE_MODEL, prompt,
+                   system_instruction=JUDGE_SYSTEM_INSTRUCTION, temperature=0.0)
     return _parse_json_object(raw)
 
 
@@ -114,6 +140,12 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
     problems = []
     if first_pass["banned_phrases"]:
         problems.append(f"remove these banned phrases: {first_pass['banned_phrases']}")
+    if first_pass["antithesis"]:
+        problems.append(
+            "remove the 'it's not X, it's Y' / 'not just X but Y' antithesis "
+            f"construction (found: {first_pass['antithesis']}); state the point "
+            "once, plainly, without setting up a negation to reverse"
+        )
     if first_pass["em_dash_count"] > max_em_dashes:
         problems.append(
             f"too many em dashes ({first_pass['em_dash_count']}, limit {max_em_dashes})"
@@ -137,12 +169,15 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
 
 def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
                            max_em_dashes: int = 1, max_attempts: int = 3,
-                           min_voice_score: int = 7, agent: str = "writer") -> dict:
+                           min_voice_score: int = 7, agent: str = "writer",
+                           temperature: float = None) -> dict:
     """Shared generate-evaluate-revise loop. build_prompt(feedback) returns
     the prompt for one attempt (feedback is None on the first attempt, then
-    the previous attempt's failure feedback string). Logs every attempt via
-    observability.log_decision(). Stops on the first pass or after
-    max_attempts, returning the last attempt either way."""
+    the previous attempt's failure feedback string). temperature is the
+    per-content-type sampling temperature for the draft calls (the judge
+    inside evaluate() always runs deterministic regardless). Logs every
+    attempt via observability.log_decision(). Stops on the first pass or
+    after max_attempts, returning the last attempt either way."""
     from gemini_client import generate
     from observability import log_decision
 
@@ -152,7 +187,8 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
         if attempt > 1:
             time.sleep(CALL_PACING_SECONDS)
         prompt = build_prompt(feedback)
-        text = generate(model, prompt, system_instruction=system_instruction)
+        text = generate(model, prompt, system_instruction=system_instruction,
+                        temperature=temperature)
         time.sleep(CALL_PACING_SECONDS)  # draft call, then the judge call below
         result = evaluate(text, max_em_dashes=max_em_dashes, min_voice_score=min_voice_score)
 

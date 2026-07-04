@@ -25,17 +25,22 @@ client = genai.Client(api_key=API_KEY)
 
 
 def generate(model: str, prompt: str, system_instruction: str = None,
-             tools: list = None, max_retries: int = 5) -> str:
+             tools: list = None, max_retries: int = 5,
+             temperature: float = None) -> str:
     """Call Gemini with automatic retry on transient server errors (503/
     overload) and on 429 rate-limit errors (a backoff-and-retry is worth it
     in case this is a short per-minute throttle rather than a real quota
-    cap). Raises SystemExit with a plain-English message on bad model name
-    (404) or auth errors instead of a raw traceback."""
+    cap). temperature, when given, sets the sampling temperature (callers
+    pass a per-content-type value from PLATFORM_RULES; the voice judge
+    passes 0.0). Raises SystemExit with a plain-English message on bad model
+    name (404) or auth errors instead of a raw traceback."""
     config_kwargs = {}
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction
     if tools:
         config_kwargs["tools"] = tools
+    if temperature is not None:
+        config_kwargs["temperature"] = temperature
 
     last_server_error = None
     last_quota_error = None

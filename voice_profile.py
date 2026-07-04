@@ -77,8 +77,13 @@ ANTI_AI_TELL_PROMPT = (
 "'it is widely recognized.' If a claim needs a source, it is a specific named one "
 "or it is John's own observation.\n"
 
-"5. NO negative parallelisms. Avoid 'not just X, but Y,' 'it isn't about X, it's about Y,' "
-"'no X, no Y, just Z.' This is the single most overused AI rhythm. Use it almost never.\n"
+"5. NO negative parallelisms or antithesis reversals. This is the single most "
+"overused AI rhythm and the hardest tell to unlearn. Never set up a negation and "
+"then reassert its opposite: 'it's not X, it's Y,' 'it isn't about X, it's about Y,' "
+"'not just X, but Y,' 'not X but rather Y,' 'no X, no Y, just Z.' If you catch "
+"yourself writing 'not' and reaching for a pivot, delete the whole frame and state "
+"the point once, plainly. A trailing qualifier that only negates ('..., not the other "
+"way around') is fine; it is the reassertion half that is the tell.\n"
 
 "6. NO rule-of-three padding. Do not reach for three adjectives or three parallel "
 "phrases to sound complete.\n"
@@ -132,6 +137,25 @@ NEGATIVE_PARALLELISM_FLAGS = [
     "isn't a", "it's not a", "rather than a",
 ]
 
+# Antithesis / "it's not X, it's Y" reversal frames. Unlike the softer
+# NEGATIVE_PARALLELISM_FLAGS above (which only flag for review), a match on
+# any of these is a HARD guardrail fail: it is the specific front-loaded
+# reversal that John flagged as still leaking through, and the revise loop
+# should be forced to rewrite it. Each pattern requires the reassertion
+# pivot (the "...it's Y" / "...but Y" half), so John's own trailing
+# qualifiers that negate WITHOUT reasserting -- e.g. "I'm writing toward
+# that question, not from the other side of it" -- do not match. Applied
+# case-insensitively in guardrails.py. Kept ASCII (straight apostrophes).
+ANTITHESIS_PATTERNS = [
+    r"\bit'?s not\b[^.!?]{0,50}?,\s*it'?s\b",
+    r"\bit\s+is\s+not\b[^.!?]{0,50}?,\s*it\s+is\b",
+    r"\bit\s+isn'?t\b[^.!?]{0,50}?,\s*it'?s\b",
+    r"\bnot\s+just\b[^.!?]{0,50}?\bbut\b",
+    r"\bnot\s+only\b[^.!?]{0,50}?\bbut\b",
+    r"\b(isn'?t|is\s+not|not)\s+about\b[^.!?]{0,50}?\b(it'?s|its)\s+about\b",
+    r"\bnot\b[^.!?]{0,40}?\bbut\s+rather\b",
+]
+
 # Reference passages from John's actual writing (the preface).
 # Built from ASCII pieces so the source file stays pure ASCII; the spaced
 # em dash is inserted via the DASH helper at runtime.
@@ -149,23 +173,32 @@ REFERENCE_PASSAGES = [
     "I'm writing toward that question, not from the other side of it.",
 ]
 
+# temperature is per-content-type: long-form essays run cooler for control
+# and consistency across 800-1500 words; short notes run hotter to stay
+# punchy and varied; LinkedIn posts sit in between. Threaded through
+# gemini_client.generate() by the Writer / Substack Specialist. The voice
+# judge is separate and always runs deterministic (temp 0) since it scores,
+# not generates.
 PLATFORM_RULES = {
     "linkedin_text_post": {
         "min_words": 100, "max_words": 300,
         "min_hashtags": 3, "max_hashtags": 5,
         "allow_links_in_body": False, "allow_emoji_in_body": False,
         "max_em_dashes": 1,
+        "temperature": 0.8,
     },
     "substack_essay": {
         "min_words": 800, "max_words": 1500,
         "min_hashtags": 0, "max_hashtags": 0,
         "allow_links_in_body": True, "allow_emoji_in_body": False,
         "max_em_dashes": 4,
+        "temperature": 0.6,
     },
     "substack_note": {
         "min_words": 10, "max_words": 80,
         "min_hashtags": 0, "max_hashtags": 0,
         "allow_links_in_body": True, "allow_emoji_in_body": True,
         "max_em_dashes": 1,
+        "temperature": 0.95,
     },
 }
