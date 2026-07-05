@@ -323,10 +323,22 @@
   `[EMPTY]` SystemExit that names the block_reason / finish_reason and the
   fix, instead of a raw traceback. It fails fast rather than retrying, to
   protect credits (an empty response is usually deterministic, not a blip).
-  Still open until the next real run tells us the finish_reason: if it is
-  MAX_TOKENS, the fix is to raise max_output_tokens or cap the thinking
-  budget on the Scout/agent calls; the new message will say which case it
-  is.
+  The next real run answered it: finish_reason=STOP (not MAX_TOKENS), empty
+  text, reproducible, with $9.79 credit left -- so neither tokens nor
+  billing. That is the thinking-model-plus-grounding trap: gemini-2.5-flash
+  is a thinking model, and on the Scout call (Google Search grounding) it
+  spent the whole turn on thought parts and stopped with no answer text.
+  Fixed (July 5): `generate()` gained `disable_thinking`, which attaches a
+  `ThinkingConfig(thinking_budget=0)` (guarded so an older google-genai
+  without ThinkingConfig degrades to a no-op instead of crashing); Scout's
+  grounded call now passes `disable_thinking=True`. Writer/Substack keep
+  thinking, since reasoning helps draft quality there. Also hardened:
+  `_extract_text()` now skips `thought` parts (so reasoning is never
+  returned as the answer), and the `[EMPTY]` message appends a one-line
+  `Response structure:` dump of the candidates/parts so any future empty
+  completion is diagnosable straight from the log. If Scout still comes
+  back empty after this, that structure line will say whether it is
+  thought-only, grounding-metadata-only, or genuinely zero parts.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model

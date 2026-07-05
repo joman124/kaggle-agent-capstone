@@ -64,11 +64,16 @@ For each one, return an object with exactly these six keys:
 Return ONLY a JSON array of {count} objects. No markdown code fences, no
 preamble, no explanation - just the raw JSON array."""
 
+    # gemini-2.5-flash is a thinking model; with Google Search grounding it
+    # was returning finish_reason=STOP but empty text (the whole turn went to
+    # thought parts). Disabling thinking for this grounded call makes it emit
+    # the JSON answer again. Writer/Substack keep thinking for draft quality.
     raw = generate(
         MODEL,
         prompt,
         system_instruction=SYSTEM_INSTRUCTION,
         tools=[types.Tool(google_search=types.GoogleSearch())],
+        disable_thinking=True,
     )
     return _parse_json_array(raw)
 

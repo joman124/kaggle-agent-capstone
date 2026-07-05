@@ -31,6 +31,54 @@ _BLOCK_FINISH_REASONS = {
 }
 
 
+def _thinking_off():
+    """Return a ThinkingConfig that disables the model's internal 'thinking'
+    step, or None if this google-genai version predates thinking configs.
+    gemini-2.5-flash is a thinking model; with Google Search grounding it can
+    return finish_reason=STOP but an empty answer, because the whole turn went
+    into thought parts with no final text part. Turning thinking off makes it
+    emit the answer again. Only applied to calls that pass disable_thinking
+    (currently Scout's grounded call); the pro-tier Writer/Substack drafts
+    keep thinking, since reasoning helps draft quality there."""
+    tc = getattr(types, "ThinkingConfig", None)
+    if tc is None:
+        return None
+    try:
+        return tc(thinking_budget=0)
+    except Exception:
+        return None
+
+
+def _debug_candidates(response) -> str:
+    """One-line structural summary of a response's candidates/parts, so an
+    empty completion stays diagnosable from the log without a live debugger."""
+    try:
+        cands = response.candidates or []
+    except Exception:
+        return "candidates=<unavailable>"
+    if not cands:
+        return "candidates=0"
+    bits = [f"candidates={len(cands)}"]
+    content = getattr(cands[0], "content", None)
+    if content is None:
+        bits.append("candidate0.content=None")
+        return " ".join(bits)
+    parts = getattr(content, "parts", None) or []
+    bits.append(f"candidate0.parts={len(parts)}")
+    for i, part in enumerate(parts[:4]):
+        flags = []
+        if getattr(part, "text", None):
+            flags.append("text")
+        if getattr(part, "thought", None):
+            flags.append("thought")
+        if getattr(part, "function_call", None):
+            flags.append("function_call")
+        if getattr(part, "inline_data", None):
+            flags.append("inline_data")
+        bits.append(f"part{i}=[{','.join(flags) or 'empty'}]")
+    return " ".join(bits)
+
+
 def _extract_text(response) -> str:
     """Return the response's text, or '' if it carried none. response.text is
     a convenience property that is None when no candidate produced a text part
@@ -48,6 +96,10 @@ def _extract_text(response) -> str:
         for cand in (response.candidates or []):
             content = getattr(cand, "content", None)
             for part in (getattr(content, "parts", None) or []):
+                # Skip 'thought' parts: those are the model's internal
+                # reasoning, not the answer (response.text excludes them too).
+                if getattr(part, "thought", None):
+                    continue
                 piece = getattr(part, "text", None)
                 if piece:
                     return piece.strip()
@@ -101,12 +153,13 @@ def _empty_response_message(model: str, response) -> str:
             "grounded/tool response with no plain-text part. Run it once more; if it",
             "repeats, send me the finish_reason above and I will handle that case.",
         ]
+    lines += ["", "Response structure: " + _debug_candidates(response)]
     return "\n".join(lines) + "\n"
 
 
 def generate(model: str, prompt: str, system_instruction: str = None,
              tools: list = None, max_retries: int = 5,
-             temperature: float = None) -> str:
+             temperature: float = None, disable_thinking: bool = False) -> str:
     """Call Gemini with automatic retry on transient server errors (503/
     overload) and on 429 rate-limit errors (a backoff-and-retry is worth it
     in case this is a short per-minute throttle rather than a real quota
@@ -121,6 +174,10 @@ def generate(model: str, prompt: str, system_instruction: str = None,
         config_kwargs["tools"] = tools
     if temperature is not None:
         config_kwargs["temperature"] = temperature
+    if disable_thinking:
+        thinking_cfg = _thinking_off()
+        if thinking_cfg is not None:
+            config_kwargs["thinking_config"] = thinking_cfg
 
     last_server_error = None
     last_quota_error = None
