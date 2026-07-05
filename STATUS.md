@@ -191,6 +191,24 @@
   https://ai.studio/projects so a scheduled run does not silently fail
   the same way the manual runs did during the June 25 debugging session.
 
+  **Checking whether a scheduled run worked (added July 5, after a week
+  where drafts silently did not generate).** `run_weekly.bat` now writes
+  `logs\weekly_last_status.txt` every run: one line, either `[OK] ...
+  succeeded ...` or `[FAILED] ... exit code N ...` with the most likely
+  cause. Open that file first - it is the fastest way to tell if the last
+  run worked without reading the whole `weekly_run.log`. The batch also
+  returns the real exit code now, so Task Scheduler's "Last Run Result"
+  column reflects success/failure. If a week goes by with no new drafts:
+  (1) check `weekly_last_status.txt`; (2) if it says FAILED with a quota/
+  prepay message, top up credits at https://ai.studio/projects and rerun;
+  (3) if the file is missing or has no line dated that week, the task
+  never fired - check Task Scheduler > the task > Last Run Result and the
+  History tab (common causes: PC asleep/off at the trigger time, or "Run
+  only when user is logged on" while you were not). Reminder: this whole
+  job only DRAFTS into the .docx files; it never posts to LinkedIn or
+  Substack, so "no posts on my feed" is expected - look in the docx, not
+  on the platforms.
+
 ## Resolved decisions
 - `step1_writer.py` retired, folded into `agents/writer.py`. (was open)
 - Writer uses a `-pro` model (`GEMINI_WRITER_MODEL`, default
