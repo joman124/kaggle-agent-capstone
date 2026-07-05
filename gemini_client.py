@@ -23,6 +23,86 @@ if not API_KEY:
 
 client = genai.Client(api_key=API_KEY)
 
+# finish_reason values that mean the model deliberately declined to answer;
+# retrying with the same input will not help, so we fail with a clear message.
+_BLOCK_FINISH_REASONS = {
+    "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII",
+    "IMAGE_SAFETY",
+}
+
+
+def _extract_text(response) -> str:
+    """Return the response's text, or '' if it carried none. response.text is
+    a convenience property that is None when no candidate produced a text part
+    -- blocked content, or a 'thinking' model (e.g. gemini-2.5-flash) that
+    spent its whole output-token budget on internal reasoning before writing
+    an answer. Calling .strip() on that None was the old AttributeError crash.
+    Falls back to walking candidate parts directly."""
+    try:
+        primary = response.text
+    except Exception:
+        primary = None
+    if primary:
+        return primary.strip()
+    try:
+        for cand in (response.candidates or []):
+            content = getattr(cand, "content", None)
+            for part in (getattr(content, "parts", None) or []):
+                piece = getattr(part, "text", None)
+                if piece:
+                    return piece.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _empty_response_message(model: str, response) -> str:
+    """Plain-English explanation for a response that came back with no text,
+    using the prompt block_reason / candidate finish_reason when the SDK
+    exposes them, so John sees the real cause instead of a raw traceback."""
+    block = None
+    try:
+        block = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
+    except Exception:
+        block = None
+
+    finish = None
+    try:
+        cands = response.candidates or []
+        if cands:
+            finish = getattr(cands[0], "finish_reason", None)
+    except Exception:
+        finish = None
+    finish_name = getattr(finish, "name", None) or (str(finish) if finish is not None else None)
+
+    lines = [f"\n[EMPTY] Model '{model}' returned a response with no usable text."]
+    if block:
+        block_name = getattr(block, "name", None) or str(block)
+        lines += [
+            f"The prompt was blocked before generation (block_reason={block_name}).",
+            "Reword the topic so it does not trip Google's safety filters, then rerun.",
+        ]
+    elif finish_name and finish_name.upper() in _BLOCK_FINISH_REASONS:
+        lines += [
+            f"The model stopped for finish_reason={finish_name} (a content filter).",
+            "Reword the topic so it does not trip Google's safety filters, then rerun.",
+        ]
+    elif finish_name and finish_name.upper() == "MAX_TOKENS":
+        lines += [
+            "The model hit its output-token limit before writing any answer.",
+            f"'{model}' is a 'thinking' model, so its internal reasoning can consume",
+            "the whole budget and leave no text. Fix by raising max_output_tokens, or",
+            "capping the thinking budget, or pointing this agent's model in .env at a",
+            "non-thinking model. Tell me the finish_reason and I will wire the fix.",
+        ]
+    else:
+        lines += [
+            f"finish_reason={finish_name or 'unknown'}. Usually a transient hiccup or a",
+            "grounded/tool response with no plain-text part. Run it once more; if it",
+            "repeats, send me the finish_reason above and I will handle that case.",
+        ]
+    return "\n".join(lines) + "\n"
+
 
 def generate(model: str, prompt: str, system_instruction: str = None,
              tools: list = None, max_retries: int = 5,
@@ -51,7 +131,12 @@ def generate(model: str, prompt: str, system_instruction: str = None,
                 contents=prompt,
                 config=types.GenerateContentConfig(**config_kwargs),
             )
-            return response.text.strip()
+            text = _extract_text(response)
+            if text:
+                return text
+            # The HTTP call succeeded but the model returned no text. Do not
+            # crash on None (the old bug); explain the real cause and stop.
+            raise SystemExit(_empty_response_message(model, response))
         except genai_errors.ServerError as e:
             # 503 / 500 / overload: temporary. Wait and retry with backoff.
             last_server_error = e

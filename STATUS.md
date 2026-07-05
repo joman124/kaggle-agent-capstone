@@ -310,6 +310,23 @@
   `gemini_client.py`'s `[QUOTA]` message now prints Google's raw text up
   front and only adds the generic per-minute/per-project/per-day checklist
   as a fallback when that text is not already self-explanatory.
+- **`response.text` can be `None` -- do not call `.strip()` on it blind
+  (bug found July 5, from a real scheduled-run traceback).** The July 3
+  scheduled run crashed with `AttributeError: 'NoneType' object has no
+  attribute 'strip'` at `gemini_client.generate()`'s `response.text.strip()`,
+  inside the Scout call. Gemini returns no text part (so `.text` is None)
+  when a candidate is blocked OR when a "thinking" model like
+  `gemini-2.5-flash` spends its whole output-token budget on internal
+  reasoning before writing an answer (finish_reason=MAX_TOKENS). Fixed:
+  `generate()` now goes through `_extract_text()` (guards None, walks
+  candidate parts) and, on a genuinely empty response, raises a clear
+  `[EMPTY]` SystemExit that names the block_reason / finish_reason and the
+  fix, instead of a raw traceback. It fails fast rather than retrying, to
+  protect credits (an empty response is usually deterministic, not a blip).
+  Still open until the next real run tells us the finish_reason: if it is
+  MAX_TOKENS, the fix is to raise max_output_tokens or cap the thinking
+  budget on the Scout/agent calls; the new message will say which case it
+  is.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
   `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model
