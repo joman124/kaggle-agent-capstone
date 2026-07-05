@@ -113,6 +113,58 @@ def has_api_key():
     return bool(os.getenv("GEMINI_API_KEY"))
 
 
+def render_draft_column(doc_path, platform):
+    """One Drafts-tab column: every draft in an expander, each with a
+    'Mark as published' control that appends the publish event to
+    memory/content_history.json -- the write-back that lets the
+    Strategist's rolling pillar balance see what actually went out."""
+    from publish_log import is_published, mark_published
+
+    drafts = load_drafts(doc_path)
+    if not drafts:
+        st.info("No drafts yet in %s." % doc_path)
+        return
+
+    st.caption("%d draft(s) in %s" % (len(drafts), doc_path))
+
+    # Guess each draft's pillar from the calendar: the Orchestrator uses the
+    # day's topic (or bare pillar name) as the docx heading, so a match here
+    # recovers the pillar the Strategist assigned. Ad-hoc drafts won't match
+    # and fall back to a manual pick.
+    topic_to_pillar = {}
+    for d in load_calendar():
+        key = d.get("topic") or d.get("pillar")
+        if key:
+            topic_to_pillar[key] = d.get("pillar")
+
+    for i, e in enumerate(reversed(drafts)):
+        label = e["heading"][:90] + ("..." if len(e["heading"]) > 90 else "")
+        with st.expander(label):
+            st.write(e["body"])
+            st.divider()
+            if is_published(e["heading"]):
+                st.success("Published -- recorded in content history.")
+            else:
+                topic = e["heading"].rsplit(" -- ", 1)[0]
+                guess = topic_to_pillar.get(topic)
+                default_idx = PILLARS.index(guess) if guess in PILLARS else 0
+                col_p, col_b = st.columns([2, 1])
+                with col_p:
+                    pillar = st.selectbox(
+                        "Pillar", PILLARS, index=default_idx,
+                        key="pillar-%s-%d" % (doc_path, i),
+                        label_visibility="collapsed",
+                    )
+                with col_b:
+                    if st.button(
+                        "Mark as published",
+                        key="publish-%s-%d" % (doc_path, i),
+                        use_container_width=True,
+                    ):
+                        mark_published(e["heading"], pillar, platform)
+                        st.rerun()
+
+
 # --------------------------------------------------------------------------
 # Page
 # --------------------------------------------------------------------------
@@ -224,27 +276,18 @@ with tab_plan:
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
 with tab_drafts:
+    st.caption(
+        "After you post a draft to the real platform, mark it published here. "
+        "That writes it to content history, so next week's plan balances "
+        "pillars against what actually went out instead of starting from zero."
+    )
     left, right = st.columns(2)
     with left:
         st.markdown("### LinkedIn Posts")
-        posts = load_drafts(LINKEDIN_DOC)
-        if not posts:
-            st.info("No LinkedIn drafts yet.")
-        else:
-            st.caption("%d draft(s) in %s" % (len(posts), LINKEDIN_DOC))
-            for e in reversed(posts):
-                with st.expander(e["heading"][:90] + ("..." if len(e["heading"]) > 90 else "")):
-                    st.write(e["body"])
+        render_draft_column(LINKEDIN_DOC, "linkedin")
     with right:
         st.markdown("### Substack Essays")
-        essays = load_drafts(SUBSTACK_DOC)
-        if not essays:
-            st.info("No Substack drafts yet.")
-        else:
-            st.caption("%d draft(s) in %s" % (len(essays), SUBSTACK_DOC))
-            for e in reversed(essays):
-                with st.expander(e["heading"][:90] + ("..." if len(e["heading"]) > 90 else "")):
-                    st.write(e["body"])
+        render_draft_column(SUBSTACK_DOC, "substack")
 
 with tab_trace:
     trace = load_trace()

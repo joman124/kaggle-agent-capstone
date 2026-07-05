@@ -247,16 +247,31 @@
   sharpened to name the exact frame.
 
 ## Open decisions
-- Nothing currently writes a "published" event back to
-  `memory/content_history.json` once John actually posts something - it is
-  still seeded empty and stays empty. Strategist's rolling-30-day pillar
-  balance is therefore reading an always-empty history, so every
-  `plan_week()` call effectively starts the ranking from zero rather than
-  reacting to real-world publishing. This was a pre-existing gap, but it
-  matters more now that weekly volume went from 5 to 7 posts/week: needs a
-  decision on who/what writes to that file (John manually after posting,
-  or a future "mark as published" step) before the balancing logic is
-  doing anything real.
+- (none currently)
+
+## More resolved decisions
+- **"Mark as published" write-back built (July 5). (was open)** The gap:
+  nothing ever wrote a "published" event to `memory/content_history.json`,
+  so the Strategist's rolling-30-day pillar balance always read an empty
+  history and every `plan_week()` started the ranking from zero. Now:
+  `publish_log.py` (`mark_published()` / `is_published()`) appends one
+  entry per real post in exactly the schema
+  `compute_pillar_distribution()` reads (title, ISO date, pillar,
+  platform). Idempotent -- re-marking the same draft title does not
+  duplicate, so a double-click cannot skew pillar counts; unknown pillars
+  raise. The Streamlit Drafts tab (app.py) grew a per-draft "Mark as
+  published" button with a pillar selectbox (pre-guessed by matching the
+  draft heading back to `memory/calendar.json`; platform comes from which
+  docx the draft lives in); published drafts show a "recorded" badge
+  instead of the button. Also usable headless:
+  `python publish_log.py "<title>" "<pillar>" "<platform>"`. Verified:
+  append + idempotency + bad-pillar rejection, and that
+  `compute_pillar_distribution()` actually counts the new entry; history
+  file restored to `[]` after the test. Workflow: John posts a draft to
+  the real platform, then clicks the button -- next week's plan finally
+  reacts to what actually went out. (`engagement_data.json` is still
+  manual/empty; a paste-in engagement form is a possible follow-up so the
+  Analyst gets real numbers too.)
 
 ## Known gotchas (do not relearn these)
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
