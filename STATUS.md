@@ -143,8 +143,19 @@
   fields.
 
 ## Not done
-- Steps 9-12 (see BUILD_PLAN.md): Streamlit UI, deploy, writeup, video,
-  submit.
+- Steps 10-12 (see BUILD_PLAN.md): deploy, video, submit. (Step 9 UI done,
+  see below; the Kaggle Writeup is drafted in `WRITEUP.md`.)
+- **Step 9 DONE (July 5): `app.py` Streamlit UI.** A natural-language request
+  box wraps `orchestrator.handle_request()` (shows the routed intent, runs the
+  pipeline in a spinner, surfaces `SystemExit` quota/auth messages cleanly
+  instead of crashing), plus three read-only tabs that render the system's real
+  state with NO API calls -- This Week's Plan (from `memory/calendar.json`),
+  Drafts (parsed from the two .docx files), and Agent Trace (from
+  `logs/agent_trace.jsonl`, with voice_score/tone columns). The read-only tabs
+  are the safe, free, fast path for the video demo. Pure ASCII. Verified: boots
+  headless on a port with HTTP 200 and no errors; draft/calendar parsers tested
+  against the real files (6 LinkedIn drafts, 3 essays, 7 calendar days). Run
+  with `streamlit run app.py`.
 - LinkedIn account will be linked by John. Substack page created
   (`drjohnmansoor`) but no real posts published yet on either platform.
 - $10 prepaid API budget depleted by the quota-debugging session on
@@ -366,15 +377,23 @@
   `logs/agent_trace.jsonl` to confirm that against the real model.
 
 ## Immediate next step
-Run the Orchestrator end to end on your machine with a real `.env`:
-`python -m agents.orchestrator "What should I publish this week?"`. That
-single command now exercises the whole pipeline (Scout, Analyst, Strategist,
-Writer with the new revise loop, Substack Specialist) and is the first time
-Steps 3-8 get verified against a real key rather than mocked/stubbed
-dependencies. Watch `logs/agent_trace.jsonl` while it runs -- you should see
-one `route` entry from the Orchestrator and one `draft_attempt` entry per
-Writer/Substack Specialist draft, with voice_score and tone on each. After
-that, Step 9: Streamlit UI.
+**DONE (July 5) -- Steps 3-8 now verified end to end against the real key.**
+`python -m agents.orchestrator "What should I publish this week?"` ran the
+whole pipeline (Scout, Analyst, Strategist, Writer with the revise loop,
+Substack Specialist) successfully. `logs/weekly_last_status.txt` reads
+`[OK] ... weekly run succeeded`; `logs/agent_trace.jsonl` shows the expected
+`route` entry plus one `draft_attempt` per Writer/Substack Specialist draft --
+every draft passed the guardrail/judge loop on attempt 1 with voice_score 8-9
+and tone "authentic". `memory/calendar.json` is populated with real Scout
+topics/headlines, and both `LinkedIn Posts.docx` / `Substack Essays.docx` were
+regenerated. This clears the "verified only via stubs" caveats listed above for
+Scout, the Orchestrator pipelines, the Substack Specialist, and Step 6's
+`judge_voice()`/`draft_with_guardrails()` loop -- they have now all run against
+real Gemini calls.
+
+Next: Step 9, Streamlit UI. Still pending: John's line-level voice feedback on
+the generated drafts (see "Voice feedback still pending" below) and the
+draft-to-post flow (see `PUBLISHING_HANDOFF.md`) -- neither blocks Step 9.
 
 **Separately, a new chat (June 27) is starting on the actual draft-to-post
 flow.** See `PUBLISHING_HANDOFF.md` for the full brief -- it covers what

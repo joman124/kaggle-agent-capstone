@@ -3,35 +3,49 @@
     "day": "Day 1",
     "pillar": "Clinical Window",
     "platform": "linkedin",
-    "topic": null,
-    "source_headline": null
+    "topic": "Explore the patient narratives around 'AI brain fry' and the phenomenon of outsourcing confidence to AI, creating a composite patient story that illustrates the struggle with self-trust and the subsequent burnout when constantly seeking validation from a machine.",
+    "source_headline": "Workers Experiencing 'AI Brain Fry' and Outsourcing Confidence to Bots, Leading to Burnout"
   },
   {
     "day": "Day 2",
     "pillar": "The Thesis",
-    "platform": "substack",
-    "topic": null,
-    "source_headline": null
+    "platform": "linkedin",
+    "topic": "Discuss the implications of formally recognizing 'AI Replacement Dysfunction' (AIRD) as a clinical framework, exploring how it legitimizes the psychological distress many are feeling and provides a structured approach for mental health professionals to intervene.",
+    "source_headline": "New Clinical Framework 'AI Replacement Dysfunction' (AIRD) Proposed for Job Loss Anxiety"
   },
   {
     "day": "Day 3",
     "pillar": "Personal",
-    "platform": "linkedin",
-    "topic": null,
-    "source_headline": null
+    "platform": "substack",
+    "topic": "Reflect on a personal experience where relying on AI for a task might have subtly dulled critical thinking or problem-solving skills, and discuss the self-awareness needed to balance AI's efficiency with maintaining cognitive sharpness.",
+    "source_headline": "AI's Impact on Critical Thinking: Concerns Over Diminished Analytical Skills with Over-Reliance"
   },
   {
     "day": "Day 4",
     "pillar": "Applied Philosophy",
     "platform": "linkedin",
-    "topic": null,
-    "source_headline": null
+    "topic": "Examine the philosophical underpinnings of why passive reliance on AI, where tasks are merely copied and pasted, erodes an individual's sense of purpose and self-worth in their work, connecting it to existential dread.",
+    "source_headline": "Passive AI Use at Work Leads to Feelings of Meaninglessness and Reduced Self-Efficacy"
   },
   {
     "day": "Day 5",
     "pillar": "Current Events",
+    "platform": "linkedin",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 6",
+    "pillar": "Clinical Window",
+    "platform": "linkedin",
+    "topic": null,
+    "source_headline": null
+  },
+  {
+    "day": "Day 7",
+    "pillar": "The Thesis",
     "platform": "substack",
-    "topic": "React as a clinician to the layoff wave",
-    "source_headline": "AI layoffs hit white-collar workers"
+    "topic": "Analyze how transparent, supportive AI integration, paired with training and a culture of psychological safety, can be a protective factor against the negative psychological impacts of AI, rather than a sole focus on threat mitigation.",
+    "source_headline": "AI Integration and Psychological Safety: Crucial for Employee Satisfaction and Retention"
   }
 ]
