@@ -365,6 +365,18 @@
   Gemini call. Run `python -m agents.writer` on your machine and check
   `logs/agent_trace.jsonl` to confirm that against the real model.
 
+## Pipeline verified end to end (July 5)
+After the thinking fix, a real run finally got all the way through Scout ->
+Strategist -> Analyst -> Writer and only stopped at the .docx save because
+`LinkedIn Posts.docx` was open in Word (a file lock, not a code fault). That
+is the first confirmed end-to-end run against a real key -- Steps 3-8 are no
+longer just stubbed/mocked. `doc_output.append_to_doc()` was then hardened:
+if the target doc is locked open in Word, the draft is saved to a sibling
+"(unsaved - original was open)" file instead of aborting the whole run, so
+an unattended scheduled run never throws away drafts that already cost
+credits. It still stops with a clear message only if both the target and the
+fallback are locked.
+
 ## Immediate next step
 Run the Orchestrator end to end on your machine with a real `.env`:
 `python -m agents.orchestrator "What should I publish this week?"`. That
