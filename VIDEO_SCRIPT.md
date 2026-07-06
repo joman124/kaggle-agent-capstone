@@ -9,8 +9,11 @@ at a natural pace. Do not rush; the pauses while things load are fine.
 ## Before you hit record (5-minute pre-flight)
 
 1. Close Microsoft Word completely (an open docx makes the save fail).
-2. Open a terminal in the project folder and run: `streamlit run app.py`
-   -- leave the app open in your browser.
+2. Open the dashboard: double-click `run_app.bat` in the project folder
+   (C:\Projects\kaggle-agent-capstone). A black console window opens,
+   then a browser tab appears automatically after a few seconds. Leave
+   the black window open the whole time -- it IS the app; the browser is
+   just the view. To stop the app later, close the black window.
 3. In a second browser tab, open your Substack post (the real, live one).
 4. In the app, go to the **Drafts** tab, find the essay you posted to
    Substack, pick its pillar, and click **Mark as published** NOW, before

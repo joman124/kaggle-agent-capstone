@@ -159,7 +159,7 @@ def render_draft_column(doc_path, platform):
                     if st.button(
                         "Mark as published",
                         key="publish-%s-%d" % (doc_path, i),
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         mark_published(e["heading"], pillar, platform)
                         st.rerun()
@@ -214,7 +214,7 @@ with col_a:
         placeholder="e.g. What should I publish this week?",
     )
 with col_b:
-    run = st.button("Run", type="primary", use_container_width=True, disabled=not has_api_key())
+    run = st.button("Run", type="primary", width="stretch", disabled=not has_api_key())
 
 st.caption(
     "Examples: \"What should I publish this week?\" (full weekly plan), "
@@ -273,7 +273,7 @@ with tab_plan:
                 "Platform": d.get("platform", ""),
                 "Topic / Headline": d.get("source_headline") or d.get("topic") or "(open)",
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
 
 with tab_drafts:
     st.caption(
@@ -308,4 +308,4 @@ with tab_trace:
                 "Tone": scores.get("tone", ""),
                 "Intent": decision.get("intent", ""),
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
