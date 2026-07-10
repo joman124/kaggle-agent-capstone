@@ -190,14 +190,19 @@ with st.sidebar:
     st.write("- Writer: `%s`" % (os.getenv("GEMINI_WRITER_MODEL") or "gemini-pro-latest"))
 
     st.divider()
-    st.header("The five agents")
+    st.header("The agents")
     st.markdown(
         "1. **Scout** - Google Search grounding, finds trends\n"
         "2. **Strategist** - plans the week over memory state\n"
         "3. **Writer** - drafts in-voice through guardrails\n"
         "4. **Substack Specialist** - expands posts into essays\n"
-        "5. **Analyst** - learns from engagement, adjusts pillars"
+        "5. **Analyst** - learns from engagement, adjusts pillars\n"
+        "6. **Viral** - fast hot-topic reactions, auto-posts to LinkedIn"
     )
+    if os.getenv("LINKEDIN_DRY_RUN", "true").strip().lower() != "false":
+        st.caption("LinkedIn posting: DRY RUN (set LINKEDIN_DRY_RUN=false to go live)")
+    else:
+        st.caption("LinkedIn posting: LIVE")
     st.divider()
     st.caption("Kaggle AI Agents Capstone - Agents for Business")
 

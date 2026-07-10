@@ -187,6 +187,17 @@ PLATFORM_RULES = {
         "max_em_dashes": 1,
         "temperature": 0.8,
     },
+    # Short, fast-reaction LinkedIn post built to earn views and comments off a
+    # hot topic. Shorter and hotter than linkedin_text_post so it stays punchy
+    # and scroll-stopping; still runs through the same voice guardrails, so
+    # "viral" never means "off-voice." The Viral agent uses this.
+    "linkedin_viral": {
+        "min_words": 50, "max_words": 150,
+        "min_hashtags": 3, "max_hashtags": 5,
+        "allow_links_in_body": False, "allow_emoji_in_body": False,
+        "max_em_dashes": 1,
+        "temperature": 0.9,
+    },
     "substack_essay": {
         "min_words": 800, "max_words": 1500,
         "min_hashtags": 0, "max_hashtags": 0,

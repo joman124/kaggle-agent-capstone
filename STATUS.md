@@ -1,5 +1,19 @@
 # Status — as of Step 8 (June 24, 2026)
 
+## Added after Step 8: Viral agent (fast hot-topic reactions)
+- `agents/viral.py`: turns a hot topic into a short LinkedIn post
+  (`PLATFORM_RULES["linkedin_viral"]`, 50-150 words) and a Substack Note
+  (`PLATFORM_RULES["substack_note"]`), both through the same
+  `draft_with_guardrails()` loop the Writer uses, so viral content still
+  passes the voice judge.
+- `linkedin_publisher.py`: posts the LinkedIn post via the official Posts API
+  as a member. Defaults to DRY RUN (`LINKEDIN_DRY_RUN=true`) so nothing goes
+  live until a real token + `LINKEDIN_ACTOR_URN` are set. The Substack Note is
+  saved to `Substack Notes.docx` for John to post by hand (Substack has no API).
+- Orchestrator routes "go viral about X" / "react to X" to `_handle_viral`.
+  Requires the LinkedIn OAuth token described in `.env.example` before live
+  posting; runs end to end in dry run without it.
+
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
 - `google-genai` SDK installed and working. API key valid.
