@@ -13,6 +13,15 @@
 - Orchestrator routes "go viral about X" / "react to X" to `_handle_viral`.
   Requires the LinkedIn OAuth token described in `.env.example` before live
   posting; runs end to end in dry run without it.
+- `engagement.py`: a pure-logic (no Gemini) reach critic -- hook length, no
+  question opener, hashtag count, length budget, emoji policy. Threaded into
+  `draft_with_guardrails` via the new `extra_checks` hook, so a viral draft
+  must pass BOTH the voice judge and the engagement gate, and the engagement
+  feedback is fed into the redraft loop. Its score is logged per attempt.
+- `linkedin_auth.py` + `LINKEDIN_SETUP.md`: guided OAuth helper + non-developer
+  setup guide for turning on live posting.
+- `test_agents.py`: stdlib unittest for routing, engagement, and guardrail
+  rules -- no API key needed (`python -m unittest test_agents`).
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).

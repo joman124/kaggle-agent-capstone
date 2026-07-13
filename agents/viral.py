@@ -13,6 +13,21 @@ like John and passes the voice judge," just shorter and punchier:
 The LinkedIn post is meant to be auto-posted (see linkedin_publisher.py); the
 Substack Note is saved for John to post by hand, since Substack has no API.
 
+Each draft must clear TWO gates before it is accepted (up to 3 attempts):
+  1. the voice judge in guardrails.py (sounds like John, tone authentic), and
+  2. engagement.check() -- a pure-logic reach gate (hook length, no question
+     opener, hashtag count, length budget). Its feedback is fed back into the
+     next redraft, same as the voice feedback.
+
+TUNING (where to adjust behavior):
+  - Length / hashtags / temperature: PLATFORM_RULES["linkedin_viral"] and
+    ["substack_note"] in voice_profile.py.
+  - What counts as a weak hook / the "see more" cutoff: engagement.py
+    (HOOK_SOFT_LIMIT, HOOK_HARD_LIMIT, WEAK_OPENERS).
+  - What sounds like John / banned phrases: voice_profile.py.
+  - If drafts keep failing after 3 tries, the trace in logs/agent_trace.jsonl
+    shows which gate (voice_score, tone, or engagement) rejected each attempt.
+
 Run:  python -m agents.viral ["optional hot topic"]
 """
 
@@ -22,6 +37,7 @@ import time
 
 from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT, PLATFORM_RULES
 from guardrails import draft_with_guardrails, CALL_PACING_SECONDS
+import engagement
 
 # Shares the Writer's pro-tier model: this is still publication-quality voice
 # work, just short. Override with GEMINI_WRITER_MODEL in .env.
@@ -96,6 +112,9 @@ def draft_viral_linkedin(topic: str, max_attempts: int = 3) -> dict:
         max_attempts=max_attempts,
         agent="viral",
         temperature=VIRAL_RULES["temperature"],
+        # Also require the draft to be built for reach (hook, length, hashtags),
+        # not just on-voice.
+        extra_checks=lambda t: engagement.check(t, VIRAL_RULES),
     )
 
 
@@ -110,6 +129,7 @@ def draft_note(topic: str, max_attempts: int = 3) -> dict:
         max_attempts=max_attempts,
         agent="viral",
         temperature=NOTE_RULES["temperature"],
+        extra_checks=lambda t: engagement.check(t, NOTE_RULES),
     )
 
 

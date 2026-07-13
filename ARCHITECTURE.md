@@ -92,6 +92,12 @@ LinkedIn post is auto-posted through `linkedin_publisher.py` (official Posts
 API, member actor), which DEFAULTS TO DRY RUN -- nothing goes live until
 `LINKEDIN_DRY_RUN=false` and a real token + `LINKEDIN_ACTOR_URN` are set. The
 Note is saved to `Substack Notes.docx` for John to post by hand (no Substack API).
+Beyond the voice judge, viral drafts also pass a second, pure-logic gate --
+`engagement.py` (hook length, no question opener, hashtag count, length, emoji
+policy) -- wired in through `draft_with_guardrails`'s new `extra_checks` hook,
+so a post has to be built for reach as well as on-voice. `linkedin_auth.py`
+(with `LINKEDIN_SETUP.md`) is a guided OAuth helper for going live, and
+`test_agents.py` unit-tests routing + engagement + guardrails without an API key.
 
 ### Orchestrator (Day 5 — multi-agent coordination) [BUILT]
 Top-level router (`agents/orchestrator.py`). `route()` classifies a
