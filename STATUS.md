@@ -23,6 +23,21 @@
 - `test_agents.py`: stdlib unittest for routing, engagement, and guardrail
   rules -- no API key needed (`python -m unittest test_agents`).
 
+## Reaction system (make it run on its own, and learn)
+See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
+- `posts_ledger.py` (`memory/posts.json`): the store behind dedup, the approval
+  queue, and the performance loop.
+- `run_cycle.py`: Scout -> `ranking.rank_topics` (relevance x novelty x learned
+  pillar performance, drops unsafe/duplicate) -> `viral.draft_best_of_linkedin`
+  (variant-and-pick) + Note -> queue. Schedule it to react unattended.
+- `review.py`: `list|show|approve|reject` the queue; approving posts via the
+  publisher (honors dry run).
+- `safety.py` (brand-safety hold), `posting_policy.py` (dedup + cadence),
+  `ranking.py` (best-of + topic ranking), `linkedin_metrics.py` (pull real
+  reactions/comments), `analytics.py` (per-pillar multipliers feeding ranking).
+- `linkedin_publisher.post_text(first_comment=)`: link-in-first-comment reach.
+- CI: `.github/workflows/tests.yml` runs `test_agents` + `test_system`.
+
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
 - `google-genai` SDK installed and working. API key valid.

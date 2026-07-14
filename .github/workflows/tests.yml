@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+    branches: [ main, "claude/**" ]
+  pull_request:
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime deps needed by the tests
+        run: pip install python-dotenv requests
+      - name: Run unit tests
+        # These suites are pure-logic (routing, engagement, guardrail rules,
+        # ledger, policy, safety, ranking, analytics) and need no API key.
+        run: |
+          python -m unittest test_agents -v
+          python -m unittest test_system -v

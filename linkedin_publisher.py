@@ -52,10 +52,38 @@ def _build_payload(commentary: str, actor_urn: str) -> dict:
     }
 
 
-def post_text(commentary: str, dry_run: bool = None) -> dict:
+def _api_headers(token: str) -> dict:
+    api_version = os.getenv("LINKEDIN_API_VERSION", "202405").strip()
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "LinkedIn-Version": api_version,
+        "X-Restli-Protocol-Version": "2.0.0",
+    }
+
+
+def _post_comment(post_urn: str, text: str, actor_urn: str, token: str) -> None:
+    """Add a comment to a post. Used for the first-comment link strategy:
+    LinkedIn suppresses reach on posts with external links in the body, so the
+    link goes in the first comment instead. Best-effort -- a failed comment does
+    not undo the post, so we do not raise."""
+    import requests
+    import urllib.parse
+    url = ("https://api.linkedin.com/rest/socialActions/"
+           + urllib.parse.quote(post_urn, safe="") + "/comments")
+    body = {"actor": actor_urn, "message": {"text": text}}
+    try:
+        requests.post(url, headers=_api_headers(token), json=body, timeout=30)
+    except requests.RequestException:
+        pass
+
+
+def post_text(commentary: str, dry_run: bool = None, first_comment: str = None) -> dict:
     """Post plain text to LinkedIn. Returns {"posted": bool, "dry_run": bool,
-    "post_id": str|None, "actor": str}. In dry run it logs the payload and
-    returns a simulated id so the whole pipeline is testable with no token."""
+    "post_id": str|None, "actor": str}. If first_comment is given, it is added
+    as the first comment after the post goes live (the link-in-first-comment
+    reach strategy). In dry run it logs the payload and returns a simulated id
+    so the whole pipeline is testable with no token."""
     if dry_run is None:
         dry_run = _dry_run_default()
 
@@ -74,10 +102,13 @@ def post_text(commentary: str, dry_run: bool = None) -> dict:
     if dry_run:
         log_decision(agent="linkedin_publisher", action="post_text",
                      inputs={"actor": actor_urn, "chars": len(commentary)},
-                     decision={"dry_run": True, "payload_preview": commentary[:200]})
+                     decision={"dry_run": True, "payload_preview": commentary[:200],
+                               "first_comment": bool(first_comment)})
         print("[LINKEDIN] DRY RUN -- nothing was posted. Payload:")
         print(f"  author: {actor_urn}")
         print(f"  commentary ({len(commentary)} chars):\n{commentary}\n")
+        if first_comment:
+            print(f"  first comment (link): {first_comment}\n")
         return {"posted": False, "dry_run": True,
                 "post_id": "dry-run-simulated", "actor": actor_urn}
 
@@ -92,13 +123,7 @@ def post_text(commentary: str, dry_run: bool = None) -> dict:
     # Imported here so dry-run / import stays possible without requests.
     import requests
 
-    api_version = os.getenv("LINKEDIN_API_VERSION", "202405").strip()
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "LinkedIn-Version": api_version,
-        "X-Restli-Protocol-Version": "2.0.0",
-    }
+    headers = _api_headers(token)
     try:
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=30)
     except requests.RequestException as exc:
@@ -118,9 +143,12 @@ def post_text(commentary: str, dry_run: bool = None) -> dict:
         )
 
     post_id = resp.headers.get("x-restli-id") or resp.headers.get("x-linkedin-id")
+    if first_comment and post_id:
+        _post_comment(post_id, first_comment, actor_urn, token)
     log_decision(agent="linkedin_publisher", action="post_text",
                  inputs={"actor": actor_urn, "chars": len(commentary)},
-                 decision={"dry_run": False, "post_id": post_id})
+                 decision={"dry_run": False, "post_id": post_id,
+                           "first_comment": bool(first_comment)})
     return {"posted": True, "dry_run": False, "post_id": post_id, "actor": actor_urn}
 
 
