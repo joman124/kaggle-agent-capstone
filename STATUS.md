@@ -37,6 +37,11 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   reactions/comments), `analytics.py` (per-pillar multipliers feeding ranking).
 - `linkedin_publisher.post_text(first_comment=)`: link-in-first-comment reach.
 - CI: `.github/workflows/tests.yml` runs `test_agents` + `test_system`.
+- `app.py` (Streamlit) now exposes the reaction system: a **Fast reaction**
+  control (draft+queue a topic, or auto find+queue via the cycle), an
+  **Approval Queue** tab (approve/reject on screen), a **Performance** tab
+  (per-pillar metrics + "Sync LinkedIn metrics"), and engagement scores in the
+  Agent Trace tab.
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).

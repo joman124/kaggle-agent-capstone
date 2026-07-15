@@ -21,6 +21,47 @@ import sys
 import posts_ledger
 
 
+def _find(record_id: str):
+    for r in posts_ledger.load():
+        if r["id"] == record_id:
+            return r
+    return None
+
+
+def approve_item(record_id: str) -> dict:
+    """Approve one queued item. Posts LinkedIn items via the publisher (honors
+    dry run); marks Substack items done for manual posting. Returns a structured
+    result dict so both the CLI and the UI can report cleanly:
+      {"ok": bool, "msg": str, "posted": bool, "dry_run": bool, "post_id": str}"""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["status"] != "queued":
+        return {"ok": False, "msg": f"{record_id} is '{record['status']}', not queued."}
+
+    if record["platform"] == "linkedin":
+        from linkedin_publisher import post_text
+        result = post_text(record["text"])
+        if result["dry_run"]:
+            posts_ledger.update(record_id, status="posted", urn="dry-run-simulated")
+            return {"ok": True, "posted": False, "dry_run": True,
+                    "msg": f"{record_id} approved (DRY RUN -- not actually posted)."}
+        posts_ledger.mark_posted(record_id, result["post_id"])
+        return {"ok": True, "posted": True, "dry_run": False,
+                "post_id": result["post_id"],
+                "msg": f"{record_id} posted to LinkedIn (id {result['post_id']})."}
+    posts_ledger.update(record_id, status="posted")
+    return {"ok": True, "posted": False, "manual": True,
+            "msg": f"{record_id} marked done. Paste it into Substack yourself."}
+
+
+def reject_item(record_id: str) -> dict:
+    updated = posts_ledger.update(record_id, status="rejected")
+    if updated:
+        return {"ok": True, "msg": f"{record_id} rejected."}
+    return {"ok": False, "msg": f"No item with id {record_id}."}
+
+
 def cmd_list() -> None:
     pending = posts_ledger.by_status("queued")
     if not pending:
@@ -46,42 +87,15 @@ def cmd_show(record_id: str) -> None:
 
 
 def cmd_approve(record_id: str) -> None:
-    record = None
-    for r in posts_ledger.load():
-        if r["id"] == record_id:
-            record = r
-            break
-    if not record:
-        print(f"[REVIEW] No item with id {record_id}.")
-        return
-    if record["status"] != "queued":
-        print(f"[REVIEW] {record_id} is '{record['status']}', not queued. Skipping.")
-        return
-
-    if record["platform"] == "linkedin":
-        from linkedin_publisher import post_text
-        result = post_text(record["text"])
-        if result["dry_run"]:
-            posts_ledger.update(record_id, status="posted",
-                                urn="dry-run-simulated")
-            print(f"[REVIEW] {record_id} approved. DRY RUN -- not actually posted "
-                  "(set LINKEDIN_DRY_RUN=false to go live).")
-        else:
-            posts_ledger.mark_posted(record_id, result["post_id"])
-            print(f"[REVIEW] {record_id} posted to LinkedIn (id {result['post_id']}).")
-    else:
-        posts_ledger.update(record_id, status="posted")
-        print(f"[REVIEW] {record_id} marked done. Substack has no API -- paste "
-              "this into Substack yourself:\n")
-        print(record.get("text") or "")
+    record = _find(record_id)
+    result = approve_item(record_id)
+    print("[REVIEW] " + result["msg"])
+    if result.get("manual") and record:
+        print("\n" + (record.get("text") or ""))
 
 
 def cmd_reject(record_id: str) -> None:
-    updated = posts_ledger.update(record_id, status="rejected")
-    if updated:
-        print(f"[REVIEW] {record_id} rejected.")
-    else:
-        print(f"[REVIEW] No item with id {record_id}.")
+    print("[REVIEW] " + reject_item(record_id)["msg"])
 
 
 def main(argv) -> None:

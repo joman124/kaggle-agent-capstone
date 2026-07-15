@@ -258,9 +258,57 @@ if run and request.strip():
 
 st.divider()
 
+# ---- Fast reaction: draft a hot-topic post into the approval queue ---------
+st.subheader("Fast reaction")
+st.caption(
+    "React to a hot topic now. Each reaction is drafted best-of-N (voice + "
+    "engagement scored) and lands in the Approval Queue below -- nothing posts "
+    "to LinkedIn until you approve it."
+)
+rc_a, rc_b, rc_c = st.columns([3, 1, 1])
+with rc_a:
+    hot = st.text_input(
+        "Hot topic", label_visibility="collapsed",
+        placeholder="e.g. a study says AI writes most first-draft code",
+    )
+with rc_b:
+    draft_btn = st.button("Draft + queue", width="stretch", disabled=not has_api_key())
+with rc_c:
+    cycle_btn = st.button("Auto: find + queue", width="stretch", disabled=not has_api_key())
+
+if draft_btn and hot.strip():
+    with st.spinner("Drafting best-of reaction and queuing..."):
+        try:
+            import run_cycle
+            res = run_cycle.queue_topic(hot.strip())
+            note = "" if res.get("safe", True) else " (flagged sensitive -- review carefully)"
+            st.success("Queued %d item(s) for review%s. See the Approval Queue tab."
+                       % (len(res["queued"]), note))
+        except SystemExit as exc:
+            st.error(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            st.error("Failed: %s" % exc)
+
+if cycle_btn:
+    with st.spinner("Scouting hot topics, ranking, drafting the best one..."):
+        try:
+            import run_cycle
+            res = run_cycle.run()
+            if res.get("queued"):
+                st.success("Reacted to '%s' and queued %d item(s). See the "
+                           "Approval Queue tab." % (res.get("topic", ""), len(res["queued"])))
+            else:
+                st.warning("Nothing queued: %s" % res.get("reason", "(no topics)"))
+        except SystemExit as exc:
+            st.error(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            st.error("Failed: %s" % exc)
+
+st.divider()
+
 # ---- Tabs: real state, no API calls ---------------------------------------
-tab_plan, tab_drafts, tab_trace = st.tabs(
-    ["This Week's Plan", "Drafts", "Agent Trace"]
+tab_plan, tab_queue, tab_drafts, tab_perf, tab_trace = st.tabs(
+    ["This Week's Plan", "Approval Queue", "Drafts", "Performance", "Agent Trace"]
 )
 
 with tab_plan:
@@ -280,6 +328,34 @@ with tab_plan:
             })
         st.dataframe(rows, width="stretch", hide_index=True)
 
+with tab_queue:
+    import posts_ledger
+    import review
+
+    queued = posts_ledger.by_status("queued")
+    st.caption(
+        "Reactions waiting for your approval. Approving a LinkedIn item posts it "
+        "(honors LINKEDIN_DRY_RUN); a Substack Note is marked done for you to "
+        "paste in. %d item(s) queued." % len(queued)
+    )
+    if not queued:
+        st.info("Nothing queued. Use 'Fast reaction' above, or run the cycle.")
+    for r in reversed(queued):
+        head = "[%s] %s" % (r["platform"], r["topic"])
+        with st.expander(head[:100]):
+            st.write(r.get("text") or "")
+            st.divider()
+            ap, rj = st.columns(2)
+            with ap:
+                if st.button("Approve + post", key="ap-%s" % r["id"], width="stretch"):
+                    result = review.approve_item(r["id"])
+                    (st.success if result["ok"] else st.error)(result["msg"])
+                    st.rerun()
+            with rj:
+                if st.button("Reject", key="rj-%s" % r["id"], width="stretch"):
+                    review.reject_item(r["id"])
+                    st.rerun()
+
 with tab_drafts:
     st.caption(
         "After you post a draft to the real platform, mark it published here. "
@@ -293,6 +369,44 @@ with tab_drafts:
     with right:
         st.markdown("### Substack Essays")
         render_draft_column(SUBSTACK_DOC, "substack")
+
+with tab_perf:
+    import posts_ledger
+    import analytics
+    import linkedin_metrics
+
+    st.caption(
+        "What actually landed. Sync pulls real reactions/comments from LinkedIn "
+        "into the ledger; the multipliers then nudge which pillars the reaction "
+        "cycle favors."
+    )
+    if st.button("Sync LinkedIn metrics", disabled=not has_api_key()):
+        with st.spinner("Pulling engagement from LinkedIn..."):
+            try:
+                summary = linkedin_metrics.sync_ledger()
+                st.success("Synced %d of %d posted item(s). %s"
+                           % (summary.get("updated", 0), summary.get("candidates", 0),
+                              summary.get("note", "")))
+            except Exception as exc:  # noqa: BLE001
+                st.error("Sync failed: %s" % exc)
+
+    perf = analytics.summarize()
+    mult = analytics.performance_multipliers()
+    posted = posts_ledger.by_status("posted")
+    st.write("**Posts on record:** %d" % len(posted))
+    if not perf:
+        st.info("No posted content yet. Approve some reactions, then sync metrics.")
+    else:
+        rows = []
+        for pillar, s in perf.items():
+            rows.append({
+                "Pillar": pillar,
+                "Posts": s["posts"],
+                "With metrics": s["with_metrics"],
+                "Avg engagement": s["avg_engagement"],
+                "Ranking multiplier": mult.get(pillar, 1.0),
+            })
+        st.dataframe(rows, width="stretch", hide_index=True)
 
 with tab_trace:
     trace = load_trace()
@@ -310,6 +424,7 @@ with tab_trace:
                 "Action": r.get("action", ""),
                 "Passed": decision.get("passed", ""),
                 "Voice": scores.get("voice_score", ""),
+                "Engagement": scores.get("engagement_score", ""),
                 "Tone": scores.get("tone", ""),
                 "Intent": decision.get("intent", ""),
             })

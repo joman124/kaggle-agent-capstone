@@ -25,9 +25,25 @@ import ranking
 import safety
 
 
+def queue_topic(topic: str, pillar: str = None, variants: int = 2) -> dict:
+    """Draft a best-of LinkedIn post + a Substack Note for one specific topic
+    and enqueue both for approval. Shared by run() and the UI. Does not post.
+    Returns {"queued": [ids], "topic", "safe", "reason"}."""
+    from agents.viral import draft_best_of_linkedin, draft_note
+
+    verdict = safety.assess(topic)
+    li = draft_best_of_linkedin(topic, variants=variants)
+    note = draft_note(topic)
+    queued = [
+        posts_ledger.add(topic, li["text"], "linkedin", pillar=pillar),
+        posts_ledger.add(topic, note["text"], "substack", pillar=pillar),
+    ]
+    return {"queued": [q["id"] for q in queued], "topic": topic,
+            "safe": verdict["safe"], "reason": verdict["reason"]}
+
+
 def run(focus: str = None, variants: int = 2) -> dict:
     from agents.scout import find_topics
-    from agents.viral import draft_best_of_linkedin, draft_note
     import analytics
 
     # 3. Cadence first -- cheap, and skips the Gemini spend if we are capped.
@@ -57,18 +73,11 @@ def run(focus: str = None, variants: int = 2) -> dict:
     print(f"[CYCLE] Reacting to: {topic}\n  (pillar {pillar}, "
           f"rank score {rank['score']}, novelty {rank['novelty']})")
 
-    # 4. Draft best-of LinkedIn + a Note.
-    li = draft_best_of_linkedin(topic, variants=variants)
-    note = draft_note(topic)
-
-    # 5. Enqueue both for human approval.
-    queued = []
-    queued.append(posts_ledger.add(topic, li["text"], "linkedin", pillar=pillar))
-    queued.append(posts_ledger.add(topic, note["text"], "substack", pillar=pillar))
-
-    print(f"[CYCLE] Queued {len(queued)} item(s) for review. "
+    # 4 + 5. Draft best-of + Note and enqueue for human approval.
+    result = queue_topic(topic, pillar=pillar, variants=variants)
+    print(f"[CYCLE] Queued {len(result['queued'])} item(s) for review. "
           "Approve with:  python review.py list")
-    return {"queued": [q["id"] for q in queued], "topic": topic}
+    return result
 
 
 if __name__ == "__main__":
