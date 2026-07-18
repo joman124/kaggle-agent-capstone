@@ -18,6 +18,7 @@ import posting_policy
 import safety
 import ranking
 import analytics
+import review
 
 
 class TempLedger:
@@ -125,6 +126,40 @@ class TestAnalytics(unittest.TestCase):
                                 metrics={"reactions": 2, "comments": 0})
             mult = analytics.performance_multipliers(path=path)
             self.assertGreater(mult["A"], mult["B"])
+
+
+class TestReviewEdit(unittest.TestCase):
+    """review.edit_item lets a human revise a queued draft before it posts.
+    review works off the default ledger path, so we point it at a temp file."""
+    def setUp(self):
+        self._saved = posts_ledger.LEDGER_PATH
+        self.dir = tempfile.mkdtemp()
+        posts_ledger.LEDGER_PATH = os.path.join(self.dir, "posts.json")
+
+    def tearDown(self):
+        posts_ledger.LEDGER_PATH = self._saved
+
+    def test_edit_updates_queued_text(self):
+        posts_ledger.add("AI writes code", "old body", "linkedin")
+        res = review.edit_item("p0001", "new body from the dashboard")
+        self.assertTrue(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "new body from the dashboard")
+
+    def test_edit_rejects_empty_text(self):
+        posts_ledger.add("topic", "old body", "linkedin")
+        res = review.edit_item("p0001", "   ")
+        self.assertFalse(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "old body")
+
+    def test_cannot_edit_after_posted(self):
+        posts_ledger.add("topic", "live text", "linkedin")
+        posts_ledger.mark_posted("p0001", "urn:li:share:9")
+        res = review.edit_item("p0001", "sneaky change")
+        self.assertFalse(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "live text")
+
+    def test_edit_missing_id(self):
+        self.assertFalse(review.edit_item("p9999", "x")["ok"])
 
 
 if __name__ == "__main__":

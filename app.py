@@ -334,23 +334,41 @@ with tab_queue:
 
     queued = posts_ledger.by_status("queued")
     st.caption(
-        "Reactions waiting for your approval. Approving a LinkedIn item posts it "
-        "(honors LINKEDIN_DRY_RUN); a Substack Note is marked done for you to "
-        "paste in. %d item(s) queued." % len(queued)
+        "Reactions waiting for your approval. Edit the text right here, then "
+        "approve: **Approve + post** publishes exactly what is in the box "
+        "(honors LINKEDIN_DRY_RUN), so you can autopost everything from the "
+        "dashboard. A Substack Note is marked done for you to paste in. "
+        "%d item(s) queued." % len(queued)
     )
     if not queued:
         st.info("Nothing queued. Use 'Fast reaction' above, or run the cycle.")
     for r in reversed(queued):
         head = "[%s] %s" % (r["platform"], r["topic"])
         with st.expander(head[:100]):
-            st.write(r.get("text") or "")
-            st.divider()
-            ap, rj = st.columns(2)
+            edited = st.text_area(
+                "Edit before posting",
+                value=r.get("text") or "",
+                height=220,
+                key="edit-%s" % r["id"],
+            )
+            st.caption("%d characters" % len(edited))
+            sv, ap, rj = st.columns(3)
+            with sv:
+                if st.button("Save edits", key="sv-%s" % r["id"], width="stretch"):
+                    res = review.edit_item(r["id"], edited)
+                    (st.success if res["ok"] else st.error)(res["msg"])
+                    st.rerun()
             with ap:
                 if st.button("Approve + post", key="ap-%s" % r["id"], width="stretch"):
-                    result = review.approve_item(r["id"])
-                    (st.success if result["ok"] else st.error)(result["msg"])
-                    st.rerun()
+                    # Save whatever is in the box first, so we post the edited
+                    # version, then publish.
+                    saved = review.edit_item(r["id"], edited)
+                    if not saved["ok"]:
+                        st.error(saved["msg"])
+                    else:
+                        result = review.approve_item(r["id"])
+                        (st.success if result["ok"] else st.error)(result["msg"])
+                        st.rerun()
             with rj:
                 if st.button("Reject", key="rj-%s" % r["id"], width="stretch"):
                     review.reject_item(r["id"])

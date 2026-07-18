@@ -8,6 +8,7 @@ before the brand speaks.
 Commands:
   python review.py list                 # show what is waiting
   python review.py show <id>            # print one item in full
+  python review.py edit <id> <text>     # replace the draft text before posting
   python review.py approve <id>         # post it live (LinkedIn) / mark done
   python review.py reject <id>          # drop it
 
@@ -55,6 +56,26 @@ def approve_item(record_id: str) -> dict:
             "msg": f"{record_id} marked done. Paste it into Substack yourself."}
 
 
+def edit_item(record_id: str, new_text: str) -> dict:
+    """Replace the draft text of one queued item. Editing is only allowed while
+    the item is still queued: once it is posted, its text is the record of what
+    actually went live and must not change. Returns a structured result dict so
+    the CLI and the UI can report the same way."""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["status"] != "queued":
+        return {"ok": False,
+                "msg": f"{record_id} is '{record['status']}', not queued -- cannot edit."}
+    text = (new_text or "").strip()
+    if not text:
+        return {"ok": False, "msg": "Cannot save an empty post."}
+    if text == (record.get("text") or "").strip():
+        return {"ok": True, "unchanged": True, "msg": f"{record_id} unchanged."}
+    posts_ledger.update(record_id, text=text)
+    return {"ok": True, "msg": f"{record_id} updated."}
+
+
 def reject_item(record_id: str) -> dict:
     updated = posts_ledger.update(record_id, status="rejected")
     if updated:
@@ -86,6 +107,10 @@ def cmd_show(record_id: str) -> None:
     print(f"[REVIEW] No item with id {record_id}.")
 
 
+def cmd_edit(record_id: str, new_text: str) -> None:
+    print("[REVIEW] " + edit_item(record_id, new_text)["msg"])
+
+
 def cmd_approve(record_id: str) -> None:
     record = _find(record_id)
     result = approve_item(record_id)
@@ -108,6 +133,8 @@ def main(argv) -> None:
         cmd_list()
     elif cmd == "show" and arg:
         cmd_show(arg)
+    elif cmd == "edit" and arg:
+        cmd_edit(arg, " ".join(argv[2:]))
     elif cmd == "approve" and arg:
         cmd_approve(arg)
     elif cmd == "reject" and arg:
