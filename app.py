@@ -199,10 +199,39 @@ with st.sidebar:
         "5. **Analyst** - learns from engagement, adjusts pillars\n"
         "6. **Viral** - fast hot-topic reactions, auto-posts to LinkedIn"
     )
-    if os.getenv("LINKEDIN_DRY_RUN", "true").strip().lower() != "false":
-        st.caption("LinkedIn posting: DRY RUN (set LINKEDIN_DRY_RUN=false to go live)")
+    # Live/dry-run switch. Seed from .env once, then this toggle owns it for the
+    # session. We re-apply to os.environ on every rerun because load_dotenv(
+    # override=True) at the top would otherwise reset it to the .env value, and
+    # the publisher reads LINKEDIN_DRY_RUN from the environment at post time.
+    if "linkedin_live" not in st.session_state:
+        st.session_state.linkedin_live = (
+            os.getenv("LINKEDIN_DRY_RUN", "true").strip().lower() == "false"
+        )
+    # Bound by key (no value=): the widget's state lives in session_state under
+    # "linkedin_live", so flipping it either way sticks.
+    st.toggle(
+        "Post to LinkedIn for real",
+        key="linkedin_live",
+        help=(
+            "OFF = DRY RUN: the agent builds and logs the exact post but sends "
+            "nothing (the safe default). ON = approving an item posts it live to "
+            "LinkedIn. Needs a LinkedIn token in .env -- see LINKEDIN_SETUP.md."
+        ),
+    )
+    os.environ["LINKEDIN_DRY_RUN"] = (
+        "false" if st.session_state.linkedin_live else "true"
+    )
+    if st.session_state.linkedin_live:
+        if os.getenv("LINKEDIN_ACCESS_TOKEN", "").strip():
+            st.warning("LIVE: approving an item will post it to LinkedIn.")
+        else:
+            st.error(
+                "LIVE is on but no LINKEDIN_ACCESS_TOKEN in .env -- posting will "
+                "fail. See LINKEDIN_SETUP.md, or switch the toggle off."
+            )
     else:
-        st.caption("LinkedIn posting: LIVE")
+        st.caption("DRY RUN: nothing posts. Flip the toggle on to go live.")
+    st.caption("This toggle lasts for the session; .env sets the startup default.")
     st.divider()
     st.caption("Kaggle AI Agents Capstone - Agents for Business")
 
@@ -366,9 +395,17 @@ with tab_queue:
                     if not saved["ok"]:
                         st.error(saved["msg"])
                     else:
-                        result = review.approve_item(r["id"])
+                        try:
+                            result = review.approve_item(r["id"])
+                        except SystemExit as exc:
+                            # publisher raises this with a plain-English message
+                            # (e.g. no token while live). Show it, do not crash.
+                            result = {"ok": False, "msg": str(exc)}
+                        except Exception as exc:  # noqa: BLE001
+                            result = {"ok": False, "msg": "Post failed: %s" % exc}
                         (st.success if result["ok"] else st.error)(result["msg"])
-                        st.rerun()
+                        if result["ok"]:
+                            st.rerun()
             with rj:
                 if st.button("Reject", key="rj-%s" % r["id"], width="stretch"):
                     review.reject_item(r["id"])
