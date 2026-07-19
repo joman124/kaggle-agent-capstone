@@ -22,6 +22,31 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+
+def _bridge_secrets_to_env():
+    """Make Streamlit Cloud secrets visible to the whole app.
+
+    Locally, config lives in .env (loaded above). On Streamlit Community Cloud
+    there is no .env -- it is gitignored and never deploys -- so config must be
+    set in the app's Secrets (Settings -> Secrets, TOML format). Every module
+    here reads os.getenv(...), so copy any string secret into os.environ before
+    those reads happen. .env still wins for keys it already set (we only fill
+    blanks), which keeps local behavior unchanged. Guarded because st.secrets
+    raises when no secrets file exists (the normal local case)."""
+    try:
+        secrets = st.secrets
+    except Exception:
+        return
+    try:
+        for key, value in secrets.items():
+            if isinstance(value, str) and not os.environ.get(key):
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
+_bridge_secrets_to_env()
+
 CALENDAR_PATH = os.path.join("memory", "calendar.json")
 TRACE_PATH = os.path.join("logs", "agent_trace.jsonl")
 LINKEDIN_DOC = "LinkedIn Posts.docx"
@@ -183,7 +208,10 @@ with st.sidebar:
         st.success("GEMINI_API_KEY loaded")
     else:
         st.error("No GEMINI_API_KEY found. Live runs are disabled.")
-        st.caption("Set it in .env, then restart. Read-only views still work.")
+        st.caption(
+            "Local: put it in .env, then restart. Deployed (Streamlit Cloud): "
+            "add it under Settings -> Secrets as  GEMINI_API_KEY = \"...\"  "
+            "(the app reboots automatically). Read-only views still work.")
 
     st.write("**Models**")
     st.write("- Agents / judge: `%s`" % (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"))
