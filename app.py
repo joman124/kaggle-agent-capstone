@@ -381,6 +381,13 @@ with tab_queue:
                 key="edit-%s" % r["id"],
             )
             st.caption("%d characters" % len(edited))
+            with st.expander("Copy for manual posting"):
+                st.caption(
+                    "Use the copy icon at the top-right of the box below, then "
+                    "paste it into LinkedIn (or Substack) yourself. Handy while "
+                    "auto-posting is off or the API is still pending."
+                )
+                st.code(edited or "", language=None)
             sv, ap, rj = st.columns(3)
             with sv:
                 if st.button("Save edits", key="sv-%s" % r["id"], width="stretch"):
