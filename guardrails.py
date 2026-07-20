@@ -27,7 +27,7 @@ CALL_PACING_SECONDS = float(os.getenv("GEMINI_CALL_PACING_SECONDS", "8"))
 EM_DASH = chr(0x2014)
 CURLY_CHARS = [chr(0x2018), chr(0x2019), chr(0x201C), chr(0x201D)]
 
-JUDGE_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+JUDGE_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 JUDGE_SYSTEM_INSTRUCTION = (
     "You are a strict editor judging whether a draft sounds like John "

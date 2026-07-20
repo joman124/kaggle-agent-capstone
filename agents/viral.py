@@ -41,7 +41,7 @@ import engagement
 
 # Shares the Writer's pro-tier model: this is still publication-quality voice
 # work, just short. Override with GEMINI_WRITER_MODEL in .env.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
+MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-2.5-pro")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 
 LINKEDIN_DOC = "LinkedIn Posts.docx"

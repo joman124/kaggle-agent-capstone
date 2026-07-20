@@ -26,7 +26,7 @@ from agents.writer import write_linkedin_post
 
 # Shares the Writer's pro-tier model since this is also publication-quality
 # long-form content, not a quick draft.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
+MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-2.5-pro")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 SUBSTACK_DOC = "Substack Essays.docx"
 ESSAY_RULES = PLATFORM_RULES["substack_essay"]
