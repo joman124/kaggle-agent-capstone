@@ -228,29 +228,66 @@ def generate(model: str, prompt: str, system_instruction: str = None,
     if last_quota_error is not None:
         raw = str(last_quota_error)
         total_wait = sum(15 * a for a in range(1, max_retries + 1))
+        # Surface the structured facts Google buries in the 429 body: which
+        # quota tripped (quotaId / quotaMetric), its limit value, and the
+        # suggested retry delay. These name the REAL limit, so do NOT truncate
+        # them away (the old raw[:300] cut off exactly this).
+        import re as _re
+
+        def _grab(key):
+            return (_re.findall(r'"%s"\s*:\s*"([^"]+)"' % key, raw)
+                    or _re.findall(r"'%s'\s*:\s*'([^']+)'" % key, raw))
+
+        quota_ids = _grab("quotaId")
+        quota_metrics = _grab("quotaMetric")
+        quota_values = _grab("quotaValue")
+        retry_delay = (_grab("retryDelay") or [None])[0]
+        joined = " ".join(quota_ids + quota_metrics).lower()
+
         lines = [
             f"\n[QUOTA] Still rate-limited on model '{model}' after {max_retries} retries",
-            f"totaling {total_wait}s of backoff.",
+            f"totaling {total_wait}s of backoff. {total_wait}s is longer than a one-",
+            "minute window, so this is NOT a per-minute throttle -- it is a per-day",
+            "or per-model cap that will not clear just by waiting.",
             "",
-            "Google's own error message (read this first - it is often already",
-            "specific about the real cause, instead of just \"exceeded quota\"):",
-            f"  {raw[:300]}",
-            "",
+            "The exact limit Google reported:",
         ]
-        if "prepay" in raw.lower() or "depleted" in raw.lower():
+        if quota_ids or quota_metrics:
+            names = quota_ids or quota_metrics
+            for i, q in enumerate(names):
+                val = quota_values[i] if i < len(quota_values) else "?"
+                lines.append(f"  - {q}  (limit: {val})")
+        else:
+            lines.append("  (no structured quotaId returned; see the raw error below)")
+        if retry_delay:
+            lines.append(f"  Google suggests retrying after: {retry_delay}")
+        lines += ["", "Raw Google error:", f"  {raw[:1500]}", ""]
+
+        if "freetier" in joined or "free_tier" in joined:
             lines += [
-                "That means your prepaid credits are depleted for this project's",
-                "billing. Fix: go to https://ai.studio/projects, add more prepaid",
+                "This is a FREE-TIER quota, which means this model is metered on the",
+                "free tier even if your account is Tier 1. That happens with preview /",
+                "'-latest' aliased models: paid tier does not raise their caps. To get",
+                "your paid limits, point this agent's model in .env at a generally-",
+                "available id (e.g. gemini-2.5-flash); or keep -latest and accept the",
+                "preview cap.",
+            ]
+        elif "perday" in joined or "per_day" in joined or "requests_per_day" in joined:
+            lines += [
+                "This is a PER-DAY cap, so it will not reset until the daily rollover",
+                "(around midnight Pacific). If your usage was light, the model behind",
+                "this name simply has a low daily allowance on your tier.",
+            ]
+        elif "prepay" in raw.lower() or "depleted" in raw.lower():
+            lines += [
+                "Your prepaid credits are depleted for this project's billing. Add",
                 "credit (or switch the project off prepay billing), then run again.",
             ]
         else:
             lines += [
-                "If the message above is not already specific, check in order:",
-                "  1. https://ai.dev/rate-limit for this key's real usage vs. limit.",
-                "  2. Confirm Cloud Billing is linked AND enabled on this key's exact",
-                "     project (Google Cloud Console, not just an AI Studio balance).",
-                "  3. If quota is genuinely exhausted for today, free-tier daily caps",
-                "     reset around midnight Pacific - retry a single small call after.",
+                "Next: open https://ai.dev/rate-limit and compare this key's limit for",
+                f"'{model}' against your usage. A small limit here means this model",
+                "name carries a low cap on your tier; a GA model id in .env lifts it.",
             ]
         raise SystemExit("\n".join(lines) + "\n")
     # Exhausted all retries on server errors
