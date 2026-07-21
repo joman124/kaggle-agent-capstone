@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 PILLARS = [
     "Clinical Window",

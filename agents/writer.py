@@ -23,7 +23,7 @@ from guardrails import draft_with_guardrails
 
 # Writer defaults to a pro-tier model regardless of GEMINI_MODEL (used by
 # other agents); override with GEMINI_WRITER_MODEL in .env if needed.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-2.5-pro")
+MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 LINKEDIN_DOC = "LinkedIn Posts.docx"
 LINKEDIN_RULES = PLATFORM_RULES["linkedin_text_post"]
