@@ -126,16 +126,27 @@ Score the draft against the reference voice above."""
 
 
 def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
-             model: str = None) -> dict:
+             model: str = None, extra_checks=None) -> dict:
     """Run both guardrail layers and decide pass/fail. Returns the combined
     findings plus 'passed' and a human-readable 'feedback' string describing
-    whatever failed, so a caller can feed it back into the next draft attempt."""
+    whatever failed, so a caller can feed it back into the next draft attempt.
+
+    extra_checks is an optional callable(text) -> {"passed", "feedback",
+    "score", ...}. It layers an additional, caller-supplied gate on top of the
+    voice checks -- the Viral agent passes engagement.check here so a draft must
+    also be built for reach, not just be on-voice. Its failure blocks passing
+    and its feedback is folded into the returned feedback string; the result is
+    attached under the 'extra' key (e.g. for the engagement score)."""
     first_pass = run_guardrails(text, max_em_dashes=max_em_dashes)
     judged = judge_voice(text, model=model)
     voice_score = judged.get("voice_score", 0)
     tone = judged.get("tone", "generic")
 
+    extra = extra_checks(text) if extra_checks else None
+
     passed = first_pass["clean"] and voice_score >= min_voice_score and tone == "authentic"
+    if extra is not None:
+        passed = passed and extra.get("passed", True)
 
     problems = []
     if first_pass["banned_phrases"]:
@@ -156,12 +167,15 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
         problems.append(f"voice score {voice_score}/10 too low: {judged.get('feedback', 'none')}")
     if tone != "authentic":
         problems.append(f"tone read as '{tone}', not authentic")
+    if extra is not None and not extra.get("passed", True):
+        problems.append(f"engagement: {extra.get('feedback', 'weak hook')}")
 
     return {
         "first_pass": first_pass,
         "voice_score": voice_score,
         "tone": tone,
         "judge_feedback": judged.get("feedback", "none"),
+        "extra": extra,
         "passed": passed,
         "feedback": "; ".join(problems) if problems else "none",
     }
@@ -170,12 +184,14 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
 def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
                            max_em_dashes: int = 1, max_attempts: int = 3,
                            min_voice_score: int = 7, agent: str = "writer",
-                           temperature: float = None) -> dict:
+                           temperature: float = None, extra_checks=None) -> dict:
     """Shared generate-evaluate-revise loop. build_prompt(feedback) returns
     the prompt for one attempt (feedback is None on the first attempt, then
     the previous attempt's failure feedback string). temperature is the
     per-content-type sampling temperature for the draft calls (the judge
-    inside evaluate() always runs deterministic regardless). Logs every
+    inside evaluate() always runs deterministic regardless). extra_checks is
+    an optional callable(text) -> result dict passed straight to evaluate(); the
+    Viral agent uses it to add the pure-logic engagement gate. Logs every
     attempt via observability.log_decision(). Stops on the first pass or
     after max_attempts, returning the last attempt either way."""
     from gemini_client import generate
@@ -190,14 +206,17 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
         text = generate(model, prompt, system_instruction=system_instruction,
                         temperature=temperature)
         time.sleep(CALL_PACING_SECONDS)  # draft call, then the judge call below
-        result = evaluate(text, max_em_dashes=max_em_dashes, min_voice_score=min_voice_score)
+        result = evaluate(text, max_em_dashes=max_em_dashes,
+                          min_voice_score=min_voice_score, extra_checks=extra_checks)
 
+        extra = result.get("extra") or {}
         log_decision(
             agent=agent,
             action="draft_attempt",
             inputs={"attempt": attempt, "max_attempts": max_attempts},
             decision={"passed": result["passed"], "feedback": result["feedback"]},
-            scores={"voice_score": result["voice_score"], "tone": result["tone"]},
+            scores={"voice_score": result["voice_score"], "tone": result["tone"],
+                    "engagement_score": extra.get("score")},
         )
 
         history.append({"text": text, "evaluation": result})

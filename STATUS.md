@@ -1,5 +1,48 @@
 # Status — as of Step 8 (June 24, 2026)
 
+## Added after Step 8: Viral agent (fast hot-topic reactions)
+- `agents/viral.py`: turns a hot topic into a short LinkedIn post
+  (`PLATFORM_RULES["linkedin_viral"]`, 50-150 words) and a Substack Note
+  (`PLATFORM_RULES["substack_note"]`), both through the same
+  `draft_with_guardrails()` loop the Writer uses, so viral content still
+  passes the voice judge.
+- `linkedin_publisher.py`: posts the LinkedIn post via the official Posts API
+  as a member. Defaults to DRY RUN (`LINKEDIN_DRY_RUN=true`) so nothing goes
+  live until a real token + `LINKEDIN_ACTOR_URN` are set. The Substack Note is
+  saved to `Substack Notes.docx` for John to post by hand (Substack has no API).
+- Orchestrator routes "go viral about X" / "react to X" to `_handle_viral`.
+  Requires the LinkedIn OAuth token described in `.env.example` before live
+  posting; runs end to end in dry run without it.
+- `engagement.py`: a pure-logic (no Gemini) reach critic -- hook length, no
+  question opener, hashtag count, length budget, emoji policy. Threaded into
+  `draft_with_guardrails` via the new `extra_checks` hook, so a viral draft
+  must pass BOTH the voice judge and the engagement gate, and the engagement
+  feedback is fed into the redraft loop. Its score is logged per attempt.
+- `linkedin_auth.py` + `LINKEDIN_SETUP.md`: guided OAuth helper + non-developer
+  setup guide for turning on live posting.
+- `test_agents.py`: stdlib unittest for routing, engagement, and guardrail
+  rules -- no API key needed (`python -m unittest test_agents`).
+
+## Reaction system (make it run on its own, and learn)
+See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
+- `posts_ledger.py` (`memory/posts.json`): the store behind dedup, the approval
+  queue, and the performance loop.
+- `run_cycle.py`: Scout -> `ranking.rank_topics` (relevance x novelty x learned
+  pillar performance, drops unsafe/duplicate) -> `viral.draft_best_of_linkedin`
+  (variant-and-pick) + Note -> queue. Schedule it to react unattended.
+- `review.py`: `list|show|approve|reject` the queue; approving posts via the
+  publisher (honors dry run).
+- `safety.py` (brand-safety hold), `posting_policy.py` (dedup + cadence),
+  `ranking.py` (best-of + topic ranking), `linkedin_metrics.py` (pull real
+  reactions/comments), `analytics.py` (per-pillar multipliers feeding ranking).
+- `linkedin_publisher.post_text(first_comment=)`: link-in-first-comment reach.
+- CI: `.github/workflows/tests.yml` runs `test_agents` + `test_system`.
+- `app.py` (Streamlit) now exposes the reaction system: a **Fast reaction**
+  control (draft+queue a topic, or auto find+queue via the cycle), an
+  **Approval Queue** tab (approve/reject on screen), a **Performance** tab
+  (per-pillar metrics + "Sync LinkedIn metrics"), and engagement scores in the
+  Agent Trace tab.
+
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
 - `google-genai` SDK installed and working. API key valid.

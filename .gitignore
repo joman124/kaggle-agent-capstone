@@ -7,6 +7,9 @@
 # Runtime observability trace (regenerated every run)
 logs/
 
+# Posts ledger / approval queue (runtime state; holds drafted content)
+memory/posts.json
+
 # Python
 __pycache__/
 *.pyc

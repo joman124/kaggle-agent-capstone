@@ -83,6 +83,22 @@ the Strategist consumes to favor overperforming pillars. Also produces a
 human-readable `weekly_summary()`, which the Orchestrator now returns for
 "engagement"-intent requests instead of the old "not built yet" message.
 
+### Viral (added after Step 8 — fast hot-topic reactions) [BUILT]
+Turns a hot topic into fast-reaction content (`agents/viral.py`). Reuses the
+Writer's `draft_with_guardrails()` loop, so viral posts still pass the voice
+judge; they are just shorter and hotter (`PLATFORM_RULES["linkedin_viral"]`,
+50-150 words) plus a Substack Note (`PLATFORM_RULES["substack_note"]`). The
+LinkedIn post is auto-posted through `linkedin_publisher.py` (official Posts
+API, member actor), which DEFAULTS TO DRY RUN -- nothing goes live until
+`LINKEDIN_DRY_RUN=false` and a real token + `LINKEDIN_ACTOR_URN` are set. The
+Note is saved to `Substack Notes.docx` for John to post by hand (no Substack API).
+Beyond the voice judge, viral drafts also pass a second, pure-logic gate --
+`engagement.py` (hook length, no question opener, hashtag count, length, emoji
+policy) -- wired in through `draft_with_guardrails`'s new `extra_checks` hook,
+so a post has to be built for reach as well as on-voice. `linkedin_auth.py`
+(with `LINKEDIN_SETUP.md`) is a guided OAuth helper for going live, and
+`test_agents.py` unit-tests routing + engagement + guardrails without an API key.
+
 ### Orchestrator (Day 5 — multi-agent coordination) [BUILT]
 Top-level router (`agents/orchestrator.py`). `route()` classifies a
 natural-language request into an intent + topic via deterministic keyword
@@ -92,6 +108,8 @@ right after calling `route()`, then runs the matched agent pipeline:
 - "What should I publish this week?" -> Scout -> Analyst (pillar
   adjustments) -> Strategist -> Writer, then Substack Specialist for any
   day the calendar assigns to Substack
+- "Go viral about X" / "react to X" -> Viral (auto-posts LinkedIn, drafts Note;
+  Scout fills in a topic first if none was given)
 - "Write me a LinkedIn post about X" -> Writer
 - "What's trending?" -> Scout
 - "Here are last week's numbers" -> Analyst

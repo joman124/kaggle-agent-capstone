@@ -16,7 +16,7 @@ import time
 
 _TOPIC_PATTERNS = [
     re.compile(r"\babout\s+(.+)$", re.IGNORECASE),
-    re.compile(r"\breacting to\s+(.+)$", re.IGNORECASE),
+    re.compile(r"\breact(?:ing)? to\s+(.+)$", re.IGNORECASE),
     re.compile(r"\bon\s+(.+)$", re.IGNORECASE),
 ]
 
@@ -39,6 +39,11 @@ def route(request: str):
 
     if any(p in lowered for p in ("what should i publish", "plan my week", "weekly plan", "this week")):
         return "weekly_plan", None
+
+    # Viral wins over the plain platform branches below: "go viral about the
+    # trending X" is a viral request, not a trending lookup.
+    if any(p in lowered for p in ("viral", "go viral", "react to", "hot take")):
+        return "viral", _extract_topic(request)
 
     if "trending" in lowered:
         return "trending", _extract_topic(request)
@@ -70,6 +75,8 @@ def handle_request(request: str) -> str:
 
     if intent == "weekly_plan":
         return _handle_weekly_plan()
+    if intent == "viral":
+        return _handle_viral(topic)
     if intent == "trending":
         return _handle_trending(topic)
     if intent == "linkedin_post":
@@ -80,7 +87,8 @@ def handle_request(request: str) -> str:
         return _handle_engagement()
     return ("[ORCHESTRATOR] Did not recognize that request. Try things like "
             "\"What should I publish this week?\", \"What's trending?\", "
-            "\"Write me a LinkedIn post about X\", or \"Draft an essay about X\".")
+            "\"Go viral about X\", \"Write me a LinkedIn post about X\", or "
+            "\"Draft an essay about X\".")
 
 
 def _handle_weekly_plan() -> str:
@@ -122,6 +130,66 @@ def _handle_weekly_plan() -> str:
 
     lines.append("Drafts saved to 'LinkedIn Posts.docx' and 'Substack Essays.docx'.")
     return "\n".join(lines)
+
+
+def _handle_viral(topic) -> str:
+    """Fast reaction to a hot topic: draft a viral LinkedIn post and auto-post
+    it (dry run unless LINKEDIN_DRY_RUN=false), then draft a Substack Note for
+    John to post by hand. If no topic was given, Scout picks the hottest one."""
+    from agents.viral import draft_viral_linkedin, draft_note
+    from linkedin_publisher import post_text
+    from doc_output import append_to_doc
+    from guardrails import CALL_PACING_SECONDS
+    import safety
+    import posting_policy
+    import posts_ledger
+
+    if not topic:
+        from agents.scout import find_topics
+        briefing = find_topics()
+        if not briefing:
+            return ("[ORCHESTRATOR] Scout found nothing hot to react to. Try "
+                    "again with a specific topic, e.g. \"go viral about X.\"")
+        topic = briefing[0].get("suggested_angle") or briefing[0].get("headline")
+        time.sleep(CALL_PACING_SECONDS)
+
+    # Brand-safety and de-dup checks before we react.
+    verdict = safety.assess(topic)
+    dup = posting_policy.is_duplicate(topic)
+    warnings = []
+    if dup["duplicate"]:
+        warnings.append(f"Note: close to a recent post ('{dup['match']}').")
+
+    li = draft_viral_linkedin(topic)
+    time.sleep(CALL_PACING_SECONDS)
+    note = draft_note(topic)
+    append_to_doc("LinkedIn Posts.docx", topic, li["text"])
+    append_to_doc("Substack Notes.docx", topic, note["text"])
+    posts_ledger.add(topic, note["text"], "substack", status="queued")
+
+    # If the topic is sensitive, do NOT auto-post -- queue it for a human.
+    if not verdict["safe"]:
+        posts_ledger.add(topic, li["text"], "linkedin", status="queued")
+        li_status = ("HELD for review (sensitive topic: " + verdict["reason"] +
+                     "). Approve with: python review.py list")
+    else:
+        publish = post_text(li["text"])
+        if publish["dry_run"]:
+            posts_ledger.add(topic, li["text"], "linkedin", status="queued")
+            li_status = ("Drafted and saved to 'LinkedIn Posts.docx' (DRY RUN -- "
+                         "not posted; queued for review).")
+        else:
+            rec = posts_ledger.add(topic, li["text"], "linkedin", status="posted")
+            posts_ledger.mark_posted(rec["id"], publish["post_id"])
+            li_status = f"Posted to LinkedIn (id {publish['post_id']})."
+
+    prefix = ("\n".join(warnings) + "\n\n") if warnings else ""
+    return (
+        f"[ORCHESTRATOR] {prefix}Viral reaction to: {topic}\n\n"
+        f"LINKEDIN POST:\n{li['text']}\n\n{li_status}\n\n"
+        f"SUBSTACK NOTE (saved to 'Substack Notes.docx' for you to post):\n"
+        f"{note['text']}"
+    )
 
 
 def _handle_trending(topic) -> str:
