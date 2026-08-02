@@ -37,7 +37,7 @@ PILLARS = [
 
 
 # --------------------------------------------------------------------------
-# Data helpers (read-only; no Gemini calls, safe to run anytime)
+# Data helpers (read-only; no model calls, safe to run anytime)
 # --------------------------------------------------------------------------
 def load_calendar():
     """Return the planned week as a list of day dicts, or [] if none yet."""
@@ -110,7 +110,7 @@ def load_trace(limit=40):
 
 
 def has_api_key():
-    return bool(os.getenv("GEMINI_API_KEY"))
+    return bool(os.getenv("ANTHROPIC_API_KEY"))
 
 
 def render_draft_column(doc_path, platform):
@@ -180,14 +180,14 @@ st.caption(
 with st.sidebar:
     st.header("System status")
     if has_api_key():
-        st.success("GEMINI_API_KEY loaded")
+        st.success("ANTHROPIC_API_KEY loaded")
     else:
-        st.error("No GEMINI_API_KEY found. Live runs are disabled.")
+        st.error("No ANTHROPIC_API_KEY found. Live runs are disabled.")
         st.caption("Set it in .env, then restart. Read-only views still work.")
 
     st.write("**Models**")
-    st.write("- Agents / judge: `%s`" % (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"))
-    st.write("- Writer: `%s`" % (os.getenv("GEMINI_WRITER_MODEL") or "gemini-pro-latest"))
+    st.write("- Agents / judge: `%s`" % (os.getenv("ANTHROPIC_MODEL") or "claude-opus-5"))
+    st.write("- Writer: `%s`" % (os.getenv("ANTHROPIC_WRITER_MODEL") or "claude-opus-5"))
 
     st.divider()
     st.header("The agents")
@@ -258,7 +258,7 @@ st.caption(
 
 with st.expander("Note on live runs (cost + time)"):
     st.markdown(
-        "A full weekly plan makes many live Gemini calls (Scout, then the "
+        "A full weekly plan makes many live model calls (Scout, then the "
         "Writer's revise loop per post, plus Substack expansions) and can take "
         "a few minutes with rate-limit pacing. It also draws on the prepaid "
         "API balance. For a fast, free demo, use the **This Week's Plan**, "
@@ -279,7 +279,7 @@ if run and request.strip():
             st.success("Done. Drafts (if any) were saved to the Word documents.")
             st.text_area("Response", value=result, height=360)
         except SystemExit as exc:
-            # gemini_client raises SystemExit with a plain-English message on
+            # anthropic_client raises SystemExit with a plain-English message on
             # quota / auth / empty-response failures. Show it, do not crash.
             st.error(str(exc))
         except Exception as exc:  # noqa: BLE001 - surface anything else cleanly

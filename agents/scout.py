@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 The Scout agent: finds trending topics at the intersection of AI, work, and
-psychology using Gemini with Google Search grounding, so results reflect
+psychology using Claude with server-side web search, so results reflect
 current events rather than the model's training-data recall.
 
 Run:  python -m agents.scout ["optional topic to focus the search"]
@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5")
 
 PILLARS = [
     "Clinical Window",
@@ -60,21 +60,18 @@ For each one, return an object with exactly these six keys:
 Return ONLY a JSON array of {count} objects. No markdown code fences, no
 preamble, no explanation - just the raw JSON array."""
 
-    # Imported lazily so the module imports without google-genai installed
-    # (routing/tests do not need it); only this grounded call does.
-    from google.genai import types
-    from gemini_client import generate
+    # Imported lazily so the module imports without the anthropic SDK
+    # installed (routing/tests do not need it); only this grounded call does.
+    from anthropic_client import generate, WEB_SEARCH_TOOL
 
-    # gemini-2.5-flash is a thinking model; with Google Search grounding it
-    # was returning finish_reason=STOP but empty text (the whole turn went to
-    # thought parts). Disabling thinking for this grounded call makes it emit
-    # the JSON answer again. Writer/Substack keep thinking for draft quality.
+    # Claude's server-side web search replaces Gemini's Google Search
+    # grounding: the search runs on Anthropic's side and the results come
+    # back in the same response, so nothing else here changes.
     raw = generate(
         MODEL,
         prompt,
         system_instruction=SYSTEM_INSTRUCTION,
-        tools=[types.Tool(google_search=types.GoogleSearch())],
-        disable_thinking=True,
+        tools=[WEB_SEARCH_TOOL],
     )
     return _parse_json_array(raw)
 
@@ -92,7 +89,7 @@ def _parse_json_array(raw: str) -> list:
         data = json.loads(text)
     except json.JSONDecodeError:
         raise SystemExit(
-            "\n[SCOUT] Gemini did not return valid JSON. Raw output:\n" + raw[:800]
+            "\n[SCOUT] Claude did not return valid JSON. Raw output:\n" + raw[:800]
         )
     if not isinstance(data, list):
         raise SystemExit(f"\n[SCOUT] Expected a JSON array of topics, got: {type(data)}")

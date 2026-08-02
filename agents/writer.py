@@ -3,7 +3,7 @@
 The Writer agent: drafts publication-ready social content in John's voice.
 Promoted from step1_writer.py during the Step 2 package refactor.
 
-Uses its own model (GEMINI_WRITER_MODEL), separate from GEMINI_MODEL which
+Uses its own model (ANTHROPIC_WRITER_MODEL), separate from ANTHROPIC_MODEL which
 other agents (Scout, Strategist, Analyst) will use. Defaults to a -pro model
 since draft quality matters most here; override in .env if your key does not
 have access to one (run check_setup.py to see what is available).
@@ -21,9 +21,9 @@ import time
 from voice_profile import VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT, PLATFORM_RULES
 from guardrails import draft_with_guardrails
 
-# Writer defaults to a pro-tier model regardless of GEMINI_MODEL (used by
-# other agents); override with GEMINI_WRITER_MODEL in .env if needed.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
+# Writer defaults to a pro-tier model regardless of ANTHROPIC_MODEL (used by
+# other agents); override with ANTHROPIC_WRITER_MODEL in .env if needed.
+MODEL = os.getenv("ANTHROPIC_WRITER_MODEL", "claude-opus-5")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 LINKEDIN_DOC = "LinkedIn Posts.docx"
 LINKEDIN_RULES = PLATFORM_RULES["linkedin_text_post"]
@@ -54,13 +54,13 @@ Write only the post. No preamble, no explanation."""
 
 
 def generate_seed_post(topic: str) -> str:
-    """One ungated Gemini call, no guardrail loop. For callers (the
+    """One ungated model call, no guardrail loop. For callers (the
     Substack Specialist's expand_to_essay) that only need raw seed
     material and never show this text to John directly - the essay it
     feeds into runs its own full draft_with_guardrails() pass, so gating
     this draft too would pay for a second pro-tier revise loop on text
     nobody reads."""
-    from gemini_client import generate
+    from anthropic_client import generate
 
     return generate(MODEL, _build_linkedin_prompt(topic),
                     system_instruction=SYSTEM_INSTRUCTION,

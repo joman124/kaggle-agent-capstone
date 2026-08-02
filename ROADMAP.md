@@ -42,7 +42,7 @@ losing John's voice or the brand's judgment.
 - **Native video pipeline** - reposting *links* under-distributes vs native
   video; decide between an owned/licensed native-upload path or generating
   original short clips.
-- **Shared infra package** - `gemini_client` / `guardrails` / `engagement` /
+- **Shared infra package** - `anthropic_client` / `guardrails` / `engagement` /
   ledger / policy are duplicated across the two repos; extract a shared package
   or add a sync check so a fix in one does not drift.
 

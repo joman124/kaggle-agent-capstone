@@ -3,7 +3,7 @@
 Brand-safety gate. A system that reacts fast to hot topics can wander into news
 where a quick take reads as tone-deaf or exploitative (a tragedy, a death, an
 active crisis, an individual being piled on). This is a first-pass, pure-logic
-screen -- no Gemini -- that flags a topic as sensitive so the pipeline routes it
+screen -- no model calls -- that flags a topic as sensitive so the pipeline routes it
 to a human instead of auto-posting.
 
 It is intentionally conservative: false positives just mean "a person looks at

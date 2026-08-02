@@ -24,7 +24,7 @@ Each record:
     "metrics": {"impressions", "reactions", "comments", "shares"} | None
   }
 
-Pure file I/O + plain dicts, no Gemini. Safe to import and unit-test anywhere.
+Pure file I/O + plain dicts, no model calls. Safe to import and unit-test anywhere.
 """
 
 import json

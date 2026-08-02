@@ -2,7 +2,7 @@
 """
 Posting policy: pure-logic guards that keep a fast-reaction system from posting
 the same thing twice or posting too often (which reads as botty and burns
-reach). Reads the posts ledger; no Gemini.
+reach). Reads the posts ledger; no model calls.
 
 Two checks:
   - is_duplicate(topic): have we already posted/queued something about this in

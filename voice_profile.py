@@ -128,6 +128,38 @@ BANNED_PHRASES = [
     "ever-changing landscape", "fast-paced world",
     # personal tell to avoid
     "quietly", "quiet migration",
+
+    # --- Banned AI vocabulary (john-voice skill, Part 2) ---
+    # A hit here is a HARD fail, so only words with no plausible innocent use
+    # in John's clinical prose go in bare. See the scoped list below for the
+    # ones that do have a legitimate use.
+    "delve", "intricate", "realm of", "garner", "bolster", "nuanced",
+    "holistic", "showcase", "seamless", "groundbreaking", "renowned",
+    "breathtaking", "vibrant",
+
+    # Scoped forms. These words are fine in ordinary clinical writing
+    # ("foster care", "profound grief", "robust findings", "enduring
+    # connection" is a Worden citation), so banning the bare word would fail
+    # good drafts and burn a redraft cycle every time. Ban the AI construction
+    # instead, matching the "underscores the" / "highlighting the" pattern
+    # already used above.
+    "foster a", "foster an", "fosters a", "foster greater",
+    "harness the", "harnessing the",
+    "a profound impact", "profoundly shaped",
+    "robust framework", "robust set of", "robust solution",
+    "crucial to understand", "crucially",
+    "marks a turning point", "leaves an indelible mark",
+    "commitment to excellence", "commitment to quality",
+    "represents a shift", "offers a glimpse",
+
+    # Vague attribution (Part 2): a claim is sourced by name or it is John's
+    # own observation.
+    "experts argue", "experts say", "studies show", "research shows",
+    "many believe", "it is widely recognized", "observers note",
+
+    # Wrap-up openers. Scoped with the trailing comma so the tell is caught
+    # ("Ultimately, what matters...") without banning ordinary adverb use.
+    "ultimately,", "overall,", "in summary,", "all in all,",
 ]
 
 # Negative-parallelism fragments. Flagged for review rather than auto-rejected,
@@ -176,7 +208,7 @@ REFERENCE_PASSAGES = [
 # temperature is per-content-type: long-form essays run cooler for control
 # and consistency across 800-1500 words; short notes run hotter to stay
 # punchy and varied; LinkedIn posts sit in between. Threaded through
-# gemini_client.generate() by the Writer / Substack Specialist. The voice
+# anthropic_client.generate() by the Writer / Substack Specialist. The voice
 # judge is separate and always runs deterministic (temp 0) since it scores,
 # not generates.
 PLATFORM_RULES = {

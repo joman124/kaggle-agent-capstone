@@ -136,12 +136,12 @@ Ask these directly; do not guess:
 ## Constraints that still apply (from CLAUDE.md, unchanged)
 
 - Pure ASCII in every `.py` file; `# -*- coding: utf-8 -*-` header.
-- `google-genai`, not `google-generativeai` (not directly relevant to a
+- The official `anthropic` SDK (not directly relevant to a
   publish step, but applies to anything else touched in the same files).
 - No secrets in code. New credentials (LinkedIn client ID/secret/refresh
   token) go in `.env`, documented in `.env.example` with no real values,
-  same pattern as `GEMINI_API_KEY`.
-- Follow `gemini_client.py`'s existing retry/backoff and plain-English
+  same pattern as `ANTHROPIC_API_KEY`.
+- Follow `anthropic_client.py`'s existing retry/backoff and plain-English
   error pattern for any new HTTP client code -- do not let a raw API
   traceback reach John.
 - Do not change `doc_output.py`'s docx behavior; John's review habit

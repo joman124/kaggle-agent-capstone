@@ -40,8 +40,8 @@ from guardrails import draft_with_guardrails, CALL_PACING_SECONDS
 import engagement
 
 # Shares the Writer's pro-tier model: this is still publication-quality voice
-# work, just short. Override with GEMINI_WRITER_MODEL in .env.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
+# work, just short. Override with ANTHROPIC_WRITER_MODEL in .env.
+MODEL = os.getenv("ANTHROPIC_WRITER_MODEL", "claude-opus-5")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 
 LINKEDIN_DOC = "LinkedIn Posts.docx"

@@ -9,7 +9,7 @@ synced (linkedin_metrics.sync_ledger), this turns them into:
     ones that have not.
 
 Engagement per post is reactions + 2*comments (comments are the stronger signal
-of reach on LinkedIn). No Gemini; safe to run any time.
+of reach on LinkedIn). No model calls; safe to run any time.
 """
 
 import posts_ledger

@@ -60,7 +60,7 @@ list of the five agents, reading down it as you name each one.
 **SAY:**
 "Here's the system. Five specialized agents behind one orchestrator, and I
 talk to it in plain English. Scout finds what's trending in the
-psychology-and-AI space using Gemini with Google Search grounding -- real
+psychology-and-AI space using Claude's server-side web search -- real
 headlines, not hallucinated ones. Strategist plans the week: which content
 pillar, which platform, which day -- balancing coverage over a rolling
 thirty-day window, with no LLM at all, just logic over memory files.
@@ -118,7 +118,7 @@ you have it open. No clicking needed.
 
 **SAY:**
 "For the rubric: this demonstrates five course concepts. Multi-agent
-architecture with an orchestrator. Tool use -- Google Search grounding.
+architecture with an orchestrator. Tool use -- Claude's web-search tool.
 Context engineering -- memory and state in JSON driving the planner.
 Guardrails and evaluation -- rules plus an LLM-as-a-judge with a revise
 loop. And prototype-to-production -- full observability traces, a

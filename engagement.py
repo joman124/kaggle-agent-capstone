@@ -3,7 +3,7 @@
 Engagement critic: fast, rule-based feedback on whether a short post is built
 to earn views and comments. This is the "virality" counterpart to the voice
 judge in guardrails.py -- but where the voice judge is an LLM call, this is
-pure logic (no Gemini, no cost, fully testable), so it can run on every draft
+pure logic (no model calls, no cost, fully testable), so it can run on every draft
 for free and feed concrete fixes back into the revise loop.
 
 It does NOT try to guarantee a post goes viral (nothing can). It catches the

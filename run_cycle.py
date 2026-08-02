@@ -46,7 +46,7 @@ def run(focus: str = None, variants: int = 2) -> dict:
     from agents.scout import find_topics
     import analytics
 
-    # 3. Cadence first -- cheap, and skips the Gemini spend if we are capped.
+    # 3. Cadence first -- cheap, and skips the model spend if we are capped.
     gate = posting_policy.can_post_now()
     if not gate["allowed"]:
         print(f"[CYCLE] Holding: {gate['reason']}.")
