@@ -14,6 +14,7 @@ import time
 
 from voice_profile import (BANNED_PHRASES, NEGATIVE_PARALLELISM_FLAGS,
                            REFERENCE_PASSAGES, ANTITHESIS_PATTERNS)
+import voice_learnings
 
 # Compiled once. Case-insensitive so "It's not..." and "it's not..." both hit.
 _ANTITHESIS_RES = [re.compile(p, re.IGNORECASE) for p in ANTITHESIS_PATTERNS]
@@ -61,26 +62,32 @@ def find_antithesis(text: str) -> list:
 
 def run_guardrails(text: str, max_em_dashes: int = 1) -> dict:
     """Scan generated text for banned phrases, antithesis reversals, AI-tell
-    punctuation, and possible negative-parallelism rhythm. Returns a dict of
-    findings plus a 'clean' flag. Banned phrases, antithesis reversals,
-    em-dash overuse, and curly quotes cause a fail; the softer parallelism
-    fragments are flagged for review, not auto-rejected. max_em_dashes
-    defaults to the LinkedIn rule; pass a platform's own
+    punctuation, possible negative-parallelism rhythm, and John's own
+    learned voice rules (voice_learnings.py). Returns a dict of findings plus
+    a 'clean' flag. Banned phrases, antithesis reversals, em-dash overuse,
+    curly quotes, and any learned-rule hit cause a fail; the softer
+    parallelism fragments are flagged for review, not auto-rejected.
+    max_em_dashes defaults to the LinkedIn rule; pass a platform's own
     PLATFORM_RULES[...]['max_em_dashes'] for other formats (e.g. essays
     allow more)."""
     lowered = text.lower()
     banned_hits = [p for p in BANNED_PHRASES if p in lowered]
     parallelism_hits = [p for p in NEGATIVE_PARALLELISM_FLAGS if p in lowered]
     antithesis_hits = find_antithesis(text)
+    learned_snippet_hits = voice_learnings.check_learned_snippets(text)
+    learned_pattern_hits = voice_learnings.check_learned_patterns(text)
     em_dash_count = text.count(EM_DASH)
     curly = any(ch in text for ch in CURLY_CHARS)
     return {
         "banned_phrases": banned_hits,
         "negative_parallelisms": parallelism_hits,
         "antithesis": antithesis_hits,
+        "learned_snippets": learned_snippet_hits,
+        "learned_patterns": learned_pattern_hits,
         "em_dash_count": em_dash_count,
         "has_curly_quotes": curly,
         "clean": (not banned_hits and not antithesis_hits
+                  and not learned_snippet_hits and not learned_pattern_hits
                   and em_dash_count <= max_em_dashes and not curly),
     }
 
@@ -157,6 +164,14 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
             f"construction (found: {first_pass['antithesis']}); state the point "
             "once, plainly, without setting up a negation to reverse"
         )
+    if first_pass["learned_snippets"]:
+        problems.append(
+            "remove these phrases from John's permanent voice feedback: "
+            f"{first_pass['learned_snippets']}"
+        )
+    if first_pass["learned_patterns"]:
+        rules = "; ".join(sorted({h["rule"] for h in first_pass["learned_patterns"]}))
+        problems.append(f"violates John's permanent voice feedback: {rules}")
     if first_pass["em_dash_count"] > max_em_dashes:
         problems.append(
             f"too many em dashes ({first_pass['em_dash_count']}, limit {max_em_dashes})"
@@ -193,9 +208,22 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
     an optional callable(text) -> result dict passed straight to evaluate(); the
     Viral agent uses it to add the pure-logic engagement gate. Logs every
     attempt via observability.log_decision(). Stops on the first pass or
-    after max_attempts, returning the last attempt either way."""
+    after max_attempts, returning the last attempt either way.
+
+    John's permanent voice_learnings.py rules are appended to
+    system_instruction here -- the one place every drafting agent (Writer,
+    Substack Specialist, Viral) already funnels through -- so a rule added
+    via the Streamlit "Voice Rules" tab reaches every future draft with no
+    code change and no restart; this reads the learnings file fresh on
+    every call."""
     from gemini_client import generate
     from observability import log_decision
+
+    learnings_block = voice_learnings.learnings_prompt_block()
+    effective_instruction = (
+        f"{system_instruction}\n\n{learnings_block}" if learnings_block
+        else system_instruction
+    )
 
     feedback = None
     history = []
@@ -203,7 +231,7 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
         if attempt > 1:
             time.sleep(CALL_PACING_SECONDS)
         prompt = build_prompt(feedback)
-        text = generate(model, prompt, system_instruction=system_instruction,
+        text = generate(model, prompt, system_instruction=effective_instruction,
                         temperature=temperature)
         time.sleep(CALL_PACING_SECONDS)  # draft call, then the judge call below
         result = evaluate(text, max_em_dashes=max_em_dashes,

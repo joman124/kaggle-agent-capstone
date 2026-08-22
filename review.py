@@ -17,9 +17,39 @@ LINKEDIN_DRY_RUN). Substack items cannot be auto-posted, so approving one just
 records it as done and reminds you to paste it into Substack.
 """
 
+import json
+import os
 import sys
+from datetime import datetime, timezone
 
 import posts_ledger
+
+EDIT_HISTORY_PATH = os.path.join("memory", "edit_history.json")
+
+
+def _log_edit(record_id: str, before: str, after: str) -> None:
+    """Append one edit event to memory/edit_history.json -- a plain record of
+    what John changed by hand before approving, so a repeated pattern across
+    edits can be turned into a permanent voice_learnings.py rule later (see
+    the Streamlit "Voice Rules" tab). Best-effort: a logging failure must
+    never block saving the actual edit."""
+    entry = {
+        "record_id": record_id,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "before": before,
+        "after": after,
+    }
+    try:
+        history = []
+        if os.path.exists(EDIT_HISTORY_PATH):
+            with open(EDIT_HISTORY_PATH, "r", encoding="utf-8") as fh:
+                history = json.load(fh)
+        history.append(entry)
+        os.makedirs("memory", exist_ok=True)
+        with open(EDIT_HISTORY_PATH, "w", encoding="utf-8") as fh:
+            json.dump(history, fh, indent=2)
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
 def _find(record_id: str):
@@ -72,6 +102,7 @@ def edit_item(record_id: str, new_text: str) -> dict:
         return {"ok": False, "msg": "Cannot save an empty post."}
     if text == (record.get("text") or "").strip():
         return {"ok": True, "unchanged": True, "msg": f"{record_id} unchanged."}
+    _log_edit(record_id, record.get("text") or "", text)
     posts_ledger.update(record_id, text=text)
     return {"ok": True, "msg": f"{record_id} updated."}
 
