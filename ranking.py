@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Ranking helpers, pure logic (no Gemini):
+Ranking helpers, pure logic (no model calls):
 
   - pick_best(results): given several drafted candidates, choose the one most
     likely to perform -- highest combined voice + engagement score, preferring

@@ -18,16 +18,17 @@ from voice_profile import (BANNED_PHRASES, NEGATIVE_PARALLELISM_FLAGS,
 # Compiled once. Case-insensitive so "It's not..." and "it's not..." both hit.
 _ANTITHESIS_RES = [re.compile(p, re.IGNORECASE) for p in ANTITHESIS_PATTERNS]
 
-# Pause between back-to-back Gemini calls so a single draft_with_guardrails()
-# run (draft + judge, possibly x3 attempts) does not burst past the free
-# tier's per-minute rate limit. Override with GEMINI_CALL_PACING_SECONDS in
-# .env if your tier allows faster calls (or needs more room).
-CALL_PACING_SECONDS = float(os.getenv("GEMINI_CALL_PACING_SECONDS", "8"))
+# Pause between back-to-back model calls. Defaults to 0 now that we are on
+# Anthropic: the SDK backs off and retries 429s on its own, so the old 8s
+# sleep was pure latency (it existed to stay under Gemini's free-tier
+# per-minute burst limit). Set LLM_CALL_PACING_SECONDS in .env to reintroduce
+# a pause if a low rate limit ever makes the SDK's own retries insufficient.
+CALL_PACING_SECONDS = float(os.getenv("LLM_CALL_PACING_SECONDS", "0"))
 
 EM_DASH = chr(0x2014)
 CURLY_CHARS = [chr(0x2018), chr(0x2019), chr(0x201C), chr(0x201D)]
 
-JUDGE_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+JUDGE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5")
 
 JUDGE_SYSTEM_INSTRUCTION = (
     "You are a strict editor judging whether a draft sounds like John "
@@ -59,6 +60,26 @@ def find_antithesis(text: str) -> list:
     return hits
 
 
+def find_fragment_triads(text: str, max_words: int = 6, run_length: int = 3) -> list:
+    """Return runs of `run_length`+ consecutive sentences of <= max_words
+    (john-voice Part 3, sweep 4). Short sentences ARE the voice, so this is a
+    soft flag, not a hard fail -- three in a row is the machine rhythm, one or
+    two is John. Returns each offending run as a single joined string."""
+    # Split on sentence-ending punctuation; keep it simple and dependency-free.
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    triads, run = [], []
+    for s in sentences:
+        if len(s.split()) <= max_words:
+            run.append(s)
+            continue
+        if len(run) >= run_length:
+            triads.append(" ".join(run))
+        run = []
+    if len(run) >= run_length:
+        triads.append(" ".join(run))
+    return triads
+
+
 def run_guardrails(text: str, max_em_dashes: int = 1) -> dict:
     """Scan generated text for banned phrases, antithesis reversals, AI-tell
     punctuation, and possible negative-parallelism rhythm. Returns a dict of
@@ -72,14 +93,20 @@ def run_guardrails(text: str, max_em_dashes: int = 1) -> dict:
     banned_hits = [p for p in BANNED_PHRASES if p in lowered]
     parallelism_hits = [p for p in NEGATIVE_PARALLELISM_FLAGS if p in lowered]
     antithesis_hits = find_antithesis(text)
+    fragment_hits = find_fragment_triads(text)
     em_dash_count = text.count(EM_DASH)
     curly = any(ch in text for ch in CURLY_CHARS)
     return {
         "banned_phrases": banned_hits,
         "negative_parallelisms": parallelism_hits,
         "antithesis": antithesis_hits,
+        "fragment_triads": fragment_hits,
         "em_dash_count": em_dash_count,
         "has_curly_quotes": curly,
+        # fragment_triads is deliberately NOT part of 'clean': the skill says
+        # short sentences are the voice and only a run of them is the machine,
+        # with real exceptions (dialogue, deliberate hammering). Flag for
+        # review; do not burn a redraft cycle on it.
         "clean": (not banned_hits and not antithesis_hits
                   and em_dash_count <= max_em_dashes and not curly),
     }
@@ -106,9 +133,9 @@ def _parse_json_object(raw: str) -> dict:
 
 
 def judge_voice(text: str, model: str = None) -> dict:
-    """Ask Gemini to score a draft's voice/tone against REFERENCE_PASSAGES.
+    """Ask Claude to score a draft's voice/tone against REFERENCE_PASSAGES.
     Returns {"voice_score": int 0-10, "tone": str, "feedback": str}."""
-    from gemini_client import generate
+    from anthropic_client import generate
 
     references = "\n\n".join(f"- {p}" for p in REFERENCE_PASSAGES)
     prompt = f"""REFERENCE PASSAGES (John's real writing):
@@ -163,6 +190,13 @@ def evaluate(text: str, max_em_dashes: int = 1, min_voice_score: int = 7,
         )
     if first_pass["has_curly_quotes"]:
         problems.append("uses curly quotes, must be straight quotes")
+    if first_pass["fragment_triads"]:
+        # Advisory only -- does not set passed=False (see run_guardrails).
+        problems.append(
+            "three or more very short sentences in a row reads as machine "
+            f"rhythm: {first_pass['fragment_triads'][:1]}; keep the real short "
+            "sentences but rewrite verbless filler into one full sentence"
+        )
     if voice_score < min_voice_score:
         problems.append(f"voice score {voice_score}/10 too low: {judged.get('feedback', 'none')}")
     if tone != "authentic":
@@ -194,7 +228,7 @@ def draft_with_guardrails(model: str, build_prompt, system_instruction: str,
     Viral agent uses it to add the pure-logic engagement gate. Logs every
     attempt via observability.log_decision(). Stops on the first pass or
     after max_attempts, returning the last attempt either way."""
-    from gemini_client import generate
+    from anthropic_client import generate
     from observability import log_decision
 
     feedback = None

@@ -2,7 +2,7 @@
 """
 Posting policy: pure-logic guards that keep a fast-reaction system from posting
 the same thing twice or posting too often (which reads as botty and burns
-reach). Reads the posts ledger; no Gemini.
+reach). Reads the posts ledger; no model calls.
 
 Two checks:
   - is_duplicate(topic): have we already posted/queued something about this in
@@ -43,10 +43,19 @@ def _overlap(a: str, b: str) -> float:
 
 
 def _parse(ts: str):
+    """Parse an ISO timestamp to an aware UTC datetime, or None.
+
+    A naive timestamp is assumed to be UTC rather than returned as-is: these
+    values get compared against each other in can_post_now(), and mixing naive
+    with aware raises TypeError, which would take out the cadence guard
+    entirely."""
     try:
-        return datetime.fromisoformat(ts)
+        parsed = datetime.fromisoformat(ts)
     except (ValueError, TypeError):
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def is_duplicate(topic: str, window_days: int = DEDUP_WINDOW_DAYS,
@@ -71,7 +80,15 @@ def is_duplicate(topic: str, window_days: int = DEDUP_WINDOW_DAYS,
 def can_post_now(now=None, max_per_day: int = MAX_PER_DAY,
                  min_hours: int = MIN_HOURS_BETWEEN, ledger=None) -> dict:
     """Return {"allowed": bool, "reason": str}. Counts only records already
-    posted (status 'posted'), by posted_at."""
+    posted (status 'posted'), by posted_at.
+
+    "Per day" means a rolling 24 hours, not a shared UTC calendar date. Using
+    the calendar date made the limit depend on what time of day it was asked:
+    posts made five hours ago fell on the previous UTC date whenever 'now' was
+    just past midnight UTC, so the counter read zero and the cap silently
+    stopped applying. It also reset the budget at UTC midnight -- late
+    afternoon in the US -- letting a run post its full daily allowance twice
+    within a couple of hours by straddling the boundary."""
     now = now or datetime.now(timezone.utc)
     records = ledger if ledger is not None else posts_ledger.load()
     posted_times = []
@@ -82,10 +99,11 @@ def can_post_now(now=None, max_per_day: int = MAX_PER_DAY,
         if t:
             posted_times.append(t)
 
-    today = [t for t in posted_times if t.date() == now.date()]
-    if len(today) >= max_per_day:
+    recent = [t for t in posted_times if t > now - timedelta(hours=24)]
+    if len(recent) >= max_per_day:
         return {"allowed": False,
-                "reason": f"already posted {len(today)} today (max {max_per_day})"}
+                "reason": f"already posted {len(recent)} in the last 24h "
+                          f"(max {max_per_day})"}
 
     if posted_times:
         last = max(posted_times)

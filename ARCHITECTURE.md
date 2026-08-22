@@ -15,9 +15,9 @@ The user interacts in natural language; the Orchestrator routes the request.
    web      plan &      draft      SPECIALIST     learn &
    research calendar    posts      expands a       adjust
      |         |          |        LinkedIn post     |
-  Google    content     voice      into an essay   engagement
-  Search    history +   guard-         |            data store
-  grounding pillar      rails      voice guardrails
+  Claude    content     voice      into an essay   engagement
+  web       history +   guard-         |            data store
+  search    pillar      rails      voice guardrails
             state                  (substack_essay
                                     platform rules)
 ```
@@ -25,16 +25,16 @@ The user interacts in natural language; the Orchestrator routes the request.
 ## Agents
 
 ### Scout (Day 2 — tool use) [BUILT]
-Finds trending topics in the psychology + AI + work space using Gemini with
-Google Search grounding (`agents/scout.py`). Returns a JSON array of 3-5
-topics with headline, source, relevance score, suggested angle, pillar, and
-platform. Takes an optional topic to focus the search instead of scanning
-broadly for what's trending. Uses `GEMINI_MODEL` (Flash), shared with future
+Finds trending topics in the psychology + AI + work space using Claude with
+its server-side web search tool (`agents/scout.py`). Returns a JSON array of
+3-5 topics with headline, source, relevance score, suggested angle, pillar,
+and platform. Takes an optional topic to focus the search instead of scanning
+broadly for what's trending. Uses `ANTHROPIC_MODEL`, shared with future
 agents, not the Writer's pro model.
 
 ### Strategist (Day 3 — context engineering / memory) [BUILT]
 Plans what to publish, when, and where (`agents/strategist.py`). Pure logic,
-no Gemini calls. Reads `memory/content_history.json`, computes a rolling
+no model calls. Reads `memory/content_history.json`, computes a rolling
 30-day pillar distribution, and writes it to `memory/pillar_tracker.json`.
 Ranks pillars least-used-first so coverage stays balanced over time, applies
 a fixed platform cadence (3 LinkedIn : 2 Substack per 5-day plan) so platform
@@ -53,9 +53,9 @@ negative-parallelism flags) plus an LLM-as-a-judge voice/tone score against
 `REFERENCE_PASSAGES` (0-10; reject below 7, or a non-"authentic" tone). On a
 reject, the judge's feedback is fed back into the next prompt and the Writer
 redrafts, up to 3 attempts, before giving up and returning its best attempt.
-Uses its own model (`GEMINI_WRITER_MODEL`, pro-tier by default) for drafting;
-the judge itself uses `GEMINI_MODEL` (Flash), since evaluation does not need
-the pro-tier model. Saves generated posts to `LinkedIn Posts.docx` (via
+Uses its own model (`ANTHROPIC_WRITER_MODEL`, the strongest by default) for drafting;
+the judge itself uses `ANTHROPIC_MODEL`, since evaluation does not need
+the Writer's model. Saves generated posts to `LinkedIn Posts.docx` (via
 `doc_output.py`) instead of printing markdown to the console, since John
 reviews from the docx.
 
@@ -67,13 +67,13 @@ post only had room to gesture at -- not a padded restatement of the same
 paragraph. Drafts through the same `guardrails.draft_with_guardrails()`
 generate-evaluate-revise loop as the Writer, using the `substack_essay`
 entry from `PLATFORM_RULES` (800-1500 words, no hashtags, up to 4 em
-dashes) for its first-pass checks. Shares the Writer's pro-tier model
-(`GEMINI_WRITER_MODEL`) since draft quality matters here too. Saves
+dashes) for its first-pass checks. Shares the Writer's model
+(`ANTHROPIC_WRITER_MODEL`) since draft quality matters here too. Saves
 essays to `Substack Essays.docx` via `doc_output.py`.
 
 ### Analyst (Day 5 — observability / iteration) [BUILT]
 Ingests engagement data from `memory/engagement_data.json`
-(`agents/analyst.py`). Pure logic, no Gemini calls. Computes an
+(`agents/analyst.py`). Pure logic, no model calls. Computes an
 impressions-weighted engagement rate per pillar (`compute_performance()`),
 compares each against `DEFAULT_TARGET_RATE` (a 3% placeholder benchmark
 until John has real targets) to classify it "above"/"at"/"below"
@@ -102,7 +102,7 @@ so a post has to be built for reach as well as on-voice. `linkedin_auth.py`
 ### Orchestrator (Day 5 — multi-agent coordination) [BUILT]
 Top-level router (`agents/orchestrator.py`). `route()` classifies a
 natural-language request into an intent + topic via deterministic keyword
-matching -- no Gemini call, so it is unit-tested without an API key.
+matching -- no model call, so it is unit-tested without an API key.
 `handle_request()` logs the routing decision via `observability.log_decision()`
 right after calling `route()`, then runs the matched agent pipeline:
 - "What should I publish this week?" -> Scout -> Analyst (pillar
@@ -134,11 +134,12 @@ right after calling `route()`, then runs the matched agent pipeline:
 
 ## Tech stack
 
-- **LLM:** Google Gemini via `google-genai` SDK. Model from `.env`
-  (`gemini-2.5-flash` for speed; a `-pro` model optional for the Writer).
-- **Web search:** Gemini Google Search grounding (built-in tool).
+- **LLM:** Anthropic Claude via the `anthropic` SDK. Model from `.env`
+  (`claude-opus-5`; `claude-sonnet-5` is the cheaper option for non-drafting
+  calls like Scout and the voice judge).
+- **Web search:** Claude's server-side `web_search` tool.
 - **Memory:** JSON files for the prototype; Firestore optional for deploy.
-- **Guardrails:** rule-based checks + Gemini as LLM-as-a-judge.
+- **Guardrails:** rule-based checks + Claude as LLM-as-a-judge.
 - **UI:** Streamlit.
 - **Deploy:** Google Cloud Run (or run locally via Streamlit).
 
@@ -152,14 +153,14 @@ after-work-agent/
   requirements.txt
   voice_profile.py      [BUILT] voice + anti-AI-tell layers, guardrail data
   check_setup.py        [BUILT] lists available models, verifies key
-  gemini_client.py      [BUILT] shared retry/error-handling call wrapper
+  anthropic_client.py      [BUILT] shared retry/error-handling call wrapper
   doc_output.py         [BUILT] appends generated content to a Word doc
   agents/
     __init__.py         [BUILT]
     writer.py           [BUILT] promoted from step1_writer.py; uses
-                          GEMINI_WRITER_MODEL (pro-tier by default); saves
+                          ANTHROPIC_WRITER_MODEL (strongest by default); saves
                           posts to LinkedIn Posts.docx
-    scout.py            [BUILT] Google Search grounding, JSON topic briefing
+    scout.py            [BUILT] web search, JSON topic briefing
     strategist.py       [BUILT] pillar/platform balancing, memory/calendar.json
     substack_specialist.py [BUILT] expands a LinkedIn post into a long-form
                           essay; saves to Substack Essays.docx

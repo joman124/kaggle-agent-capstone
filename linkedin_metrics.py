@@ -22,7 +22,7 @@ SOCIAL_URL = "https://api.linkedin.com/rest/socialActions/"
 
 
 def _headers(token: str) -> dict:
-    version = os.getenv("LINKEDIN_API_VERSION", "202405").strip()
+    version = os.getenv("LINKEDIN_API_VERSION", "202608").strip()
     return {
         "Authorization": f"Bearer {token}",
         "LinkedIn-Version": version,

@@ -62,7 +62,7 @@ Five specialized agents coordinated by an Orchestrator. Each agent does one job.
 ```
 
 - **Scout** finds what is trending in the psychology + AI + work space using
-  Gemini with Google Search grounding, and returns a structured briefing.
+  Claude with its server-side web search tool, and returns a structured briefing.
 - **Strategist** plans the week -- which content pillar, which platform, which
   day -- balancing coverage over a rolling 30-day window. Pure logic, no LLM.
 - **Writer** drafts each post in my voice, through a generate-evaluate-revise
@@ -84,7 +84,7 @@ five, one per day of the course.
 | Concept | Where it lives | What it does |
 |--------|----------------|--------------|
 | **Agentic architecture (multi-agent)** | `agents/orchestrator.py` + 5 agents | An Orchestrator routes a natural-language request to a pipeline of single-responsibility agents. Routing is deterministic keyword-matching, so it is fully unit-tested without an API key. |
-| **Tool use / interoperability** | `agents/scout.py` | Scout calls Gemini with the built-in Google Search grounding tool (`types.Tool(google_search=...)`) to pull real, current headlines rather than hallucinated ones. |
+| **Tool use / interoperability** | `agents/scout.py` | Scout calls Claude with the server-side `web_search` tool to pull real, current headlines rather than hallucinated ones. The search runs on Anthropic's infrastructure and the results come back in the same response. |
 | **Context engineering: memory & state** | `agents/strategist.py`, `memory/*.json` | State lives in JSON: content history, a rolling pillar tracker, the calendar, engagement data. The Strategist reads and writes this state to keep pillar coverage balanced over time. |
 | **Quality: guardrails & evaluation** | `guardrails.py`, `voice_profile.py` | A two-layer voice system plus a generate-evaluate-revise loop: rule-based first-pass checks (47 banned phrases, em-dash and curly-quote limits, antithesis-pattern detection) AND an LLM-as-a-judge that scores voice 0-10 and tone against reference passages from the book. Rejects below 7 trigger up to 3 redrafts with the judge's feedback fed forward. |
 | **Prototype to production** | `observability.py`, `run_weekly.bat`, Streamlit/Cloud Run | Every routing and draft decision is logged as JSONL to `logs/agent_trace.jsonl`. A scheduled Windows task runs the weekly batch unattended and writes a plain-English success/failure status file. |
@@ -103,18 +103,29 @@ generate.
 
 ## 4. Technical Architecture
 
-- **LLM:** Google Gemini via the `google-genai` SDK. Model names live in `.env`.
-  The Writer and Substack Specialist use a pro-tier model
-  (`GEMINI_WRITER_MODEL`) because draft quality matters most there; every other
-  agent, including the voice judge, uses Flash (`GEMINI_MODEL`) because routing,
-  scouting, and evaluation do not need the pro tier. The judge always runs at
-  temperature 0 so a given draft scores consistently; generation temperature is
-  tuned per content type (essays cooler at 0.6, LinkedIn 0.8, short notes 0.95).
-- **Tool use:** Gemini Google Search grounding for Scout. Because grounding runs
-  on a thinking model, Scout disables the thinking budget on that call -- an
-  early bug where the model spent its entire token budget on internal reasoning
-  and returned empty text taught me to guard `response.text` for `None` and fail
-  with a clear, diagnosable message instead of a raw traceback.
+- **LLM:** Anthropic Claude via the `anthropic` SDK. Model names live in `.env`.
+  The Writer and Substack Specialist use `ANTHROPIC_WRITER_MODEL` because draft
+  quality matters most there; every other agent, including the voice judge, can
+  run on a cheaper `ANTHROPIC_MODEL` because routing, scouting, and evaluation
+  do not need the strongest model. Splitting them saves about 18% -- less than
+  I expected, because drafting output dominates the bill either way.
+- **A constraint worth reporting:** the original design tuned sampling
+  temperature per content type (essays cooler, short notes hotter) and ran the
+  judge at 0 for consistency. Claude Opus 5 rejects a `temperature` parameter
+  outright, so that lever is gone. The wrapper accepts the argument and drops
+  it rather than forcing an edit at ten call sites, and tone is now steered
+  entirely through the prompt. The honest replacement is `output_config.effort`,
+  which trades depth against cost; it is mapped in the code as the upgrade path
+  but not yet wired to the per-content-type rules.
+- **Tool use:** Claude's server-side `web_search` tool for Scout. The search
+  runs on Anthropic's infrastructure, so there is no client-side search loop --
+  but a long search turn can stop with `stop_reason: "pause_turn"`, which is a
+  successful HTTP 200 carrying a half-finished answer. The wrapper detects that
+  and resumes the turn, bounded, rather than silently returning truncated
+  results. Two related lessons are baked in: a refusal also arrives as a 200
+  (`stop_reason: "refusal"`) and must be checked before reading content, and
+  `content[0]` is not the answer, because thinking, tool-use, and search-result
+  blocks interleave with the text ones.
 - **Memory:** JSON files for the prototype (`memory/`), with a clear path to
   Firestore for deployment.
 - **Guardrails:** a shared `draft_with_guardrails()` generate-evaluate-revise
@@ -129,7 +140,7 @@ generate.
 
 ## 5. Results & Demo
 
-The full pipeline has been run end to end against the live Gemini API. A single
+The full pipeline has been run end to end against a live API (on Gemini, before the August 2026 migration to Claude; the Claude path passes its full offline test suite and is pending a live run). A single
 `"What should I publish this week?"` request produced a seven-day plan
 (`memory/calendar.json`), five LinkedIn posts, and two Substack essays. **Every
 draft passed the guardrail and voice-judge loop on the first attempt, with
@@ -155,7 +166,7 @@ The Substack Specialist takes a seed like that and expands it into an
 800-1500 word essay that goes *deeper* into the same patient rather than padding
 the same paragraph.
 
-The guardrails earn their place by contrast. A raw Gemini draft on this topic
+The guardrails earn their place by contrast. A raw model draft on this topic
 reaches for the antithesis frame ("This isn't burnout -- it's something older")
 and rule-of-three padding. The guardrail loop fails those drafts and feeds the
 judge's specific objection back into the next attempt until the output reads
@@ -192,14 +203,14 @@ building the platform to sell it.
 | File | Role |
 |------|------|
 | `agents/orchestrator.py` | Routes NL requests; logs every decision |
-| `agents/scout.py` | Google Search grounding -> JSON trend briefing |
+| `agents/scout.py` | Claude web-search tool -> JSON trend briefing |
 | `agents/strategist.py` | Pillar/platform planning over memory state (pure logic) |
 | `agents/writer.py` | Drafts LinkedIn posts through the guardrail loop |
 | `agents/substack_specialist.py` | Expands a post into a long-form essay |
 | `agents/analyst.py` | Engagement scoring -> pillar adjustments (pure logic) |
 | `guardrails.py` | First-pass checks + LLM-as-judge + revise loop |
 | `voice_profile.py` | Voice prompt, anti-AI-tell prompt, banned phrases, patterns |
-| `gemini_client.py` | Shared retry/error-handling call wrapper |
+| `anthropic_client.py` | Shared retry/error-handling call wrapper |
 | `observability.py` | JSONL decision trace |
 | `memory/*.json` | Content history, pillar tracker, calendar, engagement |
 | `STYLE_GUIDE.md` | Full voice + anti-AI-tell reference |

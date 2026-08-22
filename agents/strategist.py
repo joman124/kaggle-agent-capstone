@@ -3,7 +3,7 @@
 The Strategist agent: plans what to publish, when, and on which platform.
 Reads persistent state from memory/ (content history + rolling pillar
 distribution), balances pillar coverage across the week, and writes the
-plan to memory/calendar.json. Pure logic, no Gemini calls.
+plan to memory/calendar.json. Pure logic, no model calls.
 
 Run:  python -m agents.strategist
 """

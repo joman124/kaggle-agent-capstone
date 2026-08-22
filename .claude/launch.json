@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inner-table",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8642", "--directory", "C:\\Projects\\ifs-agents\\app"],
+      "port": 8642
+    }
+  ]
+}

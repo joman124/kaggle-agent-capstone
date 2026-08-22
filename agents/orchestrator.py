@@ -2,7 +2,7 @@
 """
 The Orchestrator: routes natural-language requests to the right agent(s).
 
-Routing itself (route()) is deterministic keyword matching, not a Gemini
+Routing itself (route()) is deterministic keyword matching, not a model call
 call, so it is fully unit-testable without an API key. Only the agent
 pipelines it dispatches to (handle_request()) need one.
 
@@ -63,7 +63,7 @@ def route(request: str):
 def handle_request(request: str) -> str:
     """Route the request and run the matched agent pipeline. Imports agents
     lazily inside each handler so routing stays importable without an API
-    key; only the branch that actually runs needs GEMINI_API_KEY set."""
+    key; only the branch that actually runs needs ANTHROPIC_API_KEY set."""
     from observability import log_decision
 
     intent, topic = route(request)
@@ -107,7 +107,7 @@ def _handle_weekly_plan() -> str:
     lines = ["[ORCHESTRATOR] Weekly plan:"]
     for i, day in enumerate(plan):
         if i > 0:
-            # Each day below makes several Gemini calls of its own (Writer's
+            # Each day below makes several model calls of its own (Writer's
             # revise loop, plus the Substack expansion on Substack days);
             # pause between days too so a 7-day plan does not burst the
             # free tier's per-minute rate limit.

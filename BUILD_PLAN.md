@@ -22,21 +22,21 @@ Each step maps to a course concept for the capstone writeup.
 **Step 2: Refactor into a package.** [DONE] Shared code moved into `agents/`
 and `guardrails.py`. `step1_writer.py` logic promoted into `agents/writer.py`
 and the original file retired. Writer reads its model from
-`GEMINI_WRITER_MODEL` (defaults to a `-pro` model), separate from
-`GEMINI_MODEL` which other agents will use.
+`ANTHROPIC_WRITER_MODEL` (defaults to a `-pro` model), separate from
+`ANTHROPIC_MODEL` which other agents will use.
 
-**Step 3: Scout agent.** [DONE] `agents/scout.py`. Gemini + Google Search
-grounding via `types.Tool(google_search=types.GoogleSearch())`. Input:
+**Step 3: Scout agent.** [DONE] `agents/scout.py`. Claude + server-side web
+search via `WEB_SEARCH_TOOL` from `anthropic_client`. Input:
 optional topic (CLI arg). Output: JSON array of 3-5 topics (headline, source,
 relevance_score, suggested_angle, suggested_pillar, suggested_platform). Uses
-`GEMINI_MODEL` (Flash), not the Writer's pro model. Shares the new
-`gemini_client.generate()` retry/error wrapper with the Writer. Test by
+`ANTHROPIC_MODEL`, not the Writer's stronger model. Shares the new
+`anthropic_client.generate()` retry/error wrapper with the Writer. Test by
 running it with a real API key: `python -m agents.scout` for trending topics,
 or `python -m agents.scout "AI layoffs"` to focus the search.
 
 **Step 4: Strategist agent.** [DONE] `agents/strategist.py` + `memory/` JSON
 (`content_history.json`, `pillar_tracker.json`, `calendar.json`, all seeded).
-Pure logic, no Gemini calls. Reads content history, computes a rolling
+Pure logic, no model calls. Reads content history, computes a rolling
 30-day pillar distribution, optionally consumes a Scout briefing, and writes
 a 5-day plan (pillar + platform per day) to `memory/calendar.json`. Platform
 follows a fixed cadence pattern (3 LinkedIn : 2 Substack) regardless of what
@@ -47,7 +47,7 @@ up that topic's angle and headline.
 
 **Step 5: Orchestrator.** [DONE] `agents/orchestrator.py`. `route()` classifies
 a natural-language request into an intent + topic via deterministic keyword
-matching (no Gemini call, fully unit-tested without an API key).
+matching (no model call, fully unit-tested without an API key).
 `handle_request()` then runs the matched pipeline: weekly-plan requests wire
 Scout -> Strategist -> Writer, and any day the calendar assigns to Substack
 also runs through the new Substack Specialist (see Step 5b below); single
@@ -60,19 +60,19 @@ topic extraction, engagement, unrecognized) classify correctly.
 [DONE] `agents/substack_specialist.py`. Expands a Writer-drafted LinkedIn
 post into a long-form Substack essay -- goes deeper into the same stories
 and arguments rather than padding the same paragraph. Shares the Writer's
-pro-tier model and voice/anti-AI-tell layers; applies the `substack_essay`
+the Writer's model and voice/anti-AI-tell layers; applies the `substack_essay`
 entry from `PLATFORM_RULES` (800-1500 words, no hashtags, up to 4 em
 dashes). `guardrails.run_guardrails()` gained a `max_em_dashes` parameter
 (defaulted to the existing LinkedIn limit of 1) so this agent's essay
 em-dash allowance does not require a second guardrail function. Saves to
 `Substack Essays.docx`. Like Scout and Writer, needs a real API key to
-verify the actual Gemini call end to end; not yet run against one in this
+verify the actual model call end to end; not yet run against one in this
 session.
 
 ## Phase 3 — Quality & memory [DONE]
 
 **Step 6: Full guardrails.** [DONE] `guardrails.py` gained `judge_voice()`
-(LLM-as-a-judge against `REFERENCE_PASSAGES`, using `GEMINI_MODEL`/Flash
+(LLM-as-a-judge against `REFERENCE_PASSAGES`, using `ANTHROPIC_MODEL`
 since this is evaluation, not generation), `evaluate()` (combines first-pass
 checks + the judge score into a single pass/fail with a feedback string),
 and `draft_with_guardrails()` -- the shared generate-evaluate-revise loop
@@ -81,14 +81,14 @@ and `draft_with_guardrails()` -- the shared generate-evaluate-revise loop
 `agents/substack_specialist.py` (`draft_essay()`). `write_linkedin_post()`
 and `expand_to_essay()` stay as thin wrappers returning just the final text,
 so the Orchestrator's existing calls did not need to change. Verified by
-stubbing `gemini_client.generate` and monkeypatching `guardrails.judge_voice`
+stubbing `anthropic_client.generate` and monkeypatching `guardrails.judge_voice`
 to fail twice then pass: confirmed 3 logged attempts, judge feedback
 propagated into each successive prompt, and an early stop on the first pass;
 a second run where the judge never passes confirmed it stops at
 `max_attempts` and returns `passed: False` rather than looping forever.
 
 **Step 7: Analyst agent.** [DONE] `agents/analyst.py` +
-`memory/engagement_data.json` (seeded empty). Pure logic, no Gemini calls.
+`memory/engagement_data.json` (seeded empty). Pure logic, no model calls.
 `compute_performance()` aggregates an impressions-weighted engagement rate
 per pillar; `compare_to_target()` classifies each against
 `DEFAULT_TARGET_RATE` (a 3% placeholder until John has real targets);

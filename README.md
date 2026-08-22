@@ -38,29 +38,32 @@ ready for human review.
 | Concept | Where |
 |--------|-------|
 | Agentic architecture (multi-agent) | `agents/orchestrator.py` + 5 agents |
-| Tool use / interoperability | `agents/scout.py` (Google Search grounding) |
+| Tool use / interoperability | `agents/scout.py` (web search) |
 | Context engineering: memory & state | `agents/strategist.py` + `memory/*.json` |
 | Quality: guardrails & evaluation | `guardrails.py` + `voice_profile.py` (rules + LLM-as-a-judge) |
 | Prototype to production | `observability.py` (JSONL trace), `run_weekly.bat` (scheduled runs), `app.py` (Streamlit UI) |
 
 ## Quickstart
 
-Requires Python 3.11+ and a Google Gemini API key
-(free at https://aistudio.google.com).
+Requires Python 3.11+ and an Anthropic API key
+(https://console.anthropic.com/settings/keys).
 
 ```
 python -m venv venv
 venv\Scripts\activate          # Windows (source venv/bin/activate elsewhere)
 pip install -r requirements.txt
-copy .env.example .env         # then put your GEMINI_API_KEY in .env
+copy .env.example .env         # then put your ANTHROPIC_API_KEY in .env
 python check_setup.py          # verifies the key and lists available models
 ```
 
 Run the UI:
 
 ```
-streamlit run app.py
+streamlit run app.py --server.port 8510
 ```
+
+(Or double-click `run_app.bat`. The port is pinned to 8510 because Streamlit's
+default 8501 is used by a different project on this machine.)
 
 Or drive it from the command line:
 
@@ -77,16 +80,19 @@ agent decision is logged to `logs/agent_trace.jsonl`.
 
 | File | Role |
 |------|------|
-| `app.py` | Streamlit UI: request box + plan/drafts/trace views |
+| `app.py` | Streamlit UI: request box + plan/queue/drafts/trace views |
+| `publish_due.py` | Publishes scheduled LinkedIn posts that are due (run by Task Scheduler) |
+| `publish_settings.py` | The LIVE / DRY RUN switch, stored in `.env` |
+| `review.py` | Approval queue: publish now, schedule, reject |
 | `agents/orchestrator.py` | Routes natural-language requests; logs decisions |
-| `agents/scout.py` | Google Search grounding -> JSON trend briefing |
+| `agents/scout.py` | web search -> JSON trend briefing |
 | `agents/strategist.py` | Pillar/platform planning over memory state (pure logic) |
 | `agents/writer.py` | Drafts LinkedIn posts through the guardrail loop |
 | `agents/substack_specialist.py` | Expands a post into a long-form essay |
 | `agents/analyst.py` | Engagement scoring -> pillar adjustments (pure logic) |
 | `guardrails.py` | First-pass checks + LLM-as-judge + generate-evaluate-revise loop |
 | `voice_profile.py` | Voice prompt, anti-AI-tell prompt, banned phrases, patterns |
-| `gemini_client.py` | Shared retry/error-handling Gemini wrapper |
+| `anthropic_client.py` | Shared retry/error-handling Claude wrapper |
 | `observability.py` | JSONL decision trace |
 | `doc_output.py` | Saves drafts into Word documents for review |
 | `memory/` | Content history, pillar tracker, calendar, engagement data |

@@ -41,7 +41,21 @@ def approve_item(record_id: str) -> dict:
 
     if record["platform"] == "linkedin":
         from linkedin_publisher import post_text
-        result = post_text(record["text"])
+        try:
+            result = post_text(record["text"])
+        except SystemExit as exc:
+            # linkedin_publisher exits on auth/version/network errors. Without
+            # this the SystemExit would tear down the Streamlit script run and
+            # John would see a raw traceback instead of what went wrong, and
+            # the item would be left queued with no explanation. publish_due.py
+            # already catches this on the unattended path; the UI needs it too.
+            posts_ledger.update(record_id, status="failed", error=str(exc))
+            return {"ok": False, "posted": False,
+                    "msg": "%s could not be posted: %s" % (record_id, str(exc).strip())}
+        except Exception as exc:  # noqa: BLE001 - the UI must not crash
+            posts_ledger.update(record_id, status="failed", error=str(exc))
+            return {"ok": False, "posted": False,
+                    "msg": "%s could not be posted: %s" % (record_id, exc)}
         if result["dry_run"]:
             posts_ledger.update(record_id, status="posted", urn="dry-run-simulated")
             return {"ok": True, "posted": False, "dry_run": True,
@@ -60,6 +74,58 @@ def reject_item(record_id: str) -> dict:
     if updated:
         return {"ok": True, "msg": f"{record_id} rejected."}
     return {"ok": False, "msg": f"No item with id {record_id}."}
+
+
+def schedule_item(record_id: str, when_utc_iso: str) -> dict:
+    """Hold a queued LinkedIn item until when_utc_iso, then let publish_due.py
+    fire it. Substack cannot be auto-posted, so scheduling one is refused
+    rather than silently doing nothing at the scheduled time."""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["platform"] != "linkedin":
+        return {"ok": False,
+                "msg": ("Only LinkedIn items can be scheduled. Substack has no "
+                        "API -- approve it and paste it in yourself.")}
+    if record["status"] not in ("queued", "scheduled", "failed", "missed"):
+        return {"ok": False,
+                "msg": f"{record_id} is '{record['status']}' and cannot be scheduled."}
+
+    # Validated here too, not just in the UI, so a future CLI or cron caller
+    # cannot park a post in the past (which would fire on the next check).
+    from datetime import datetime, timezone
+    when = posts_ledger._parse(when_utc_iso)
+    if when is None:
+        return {"ok": False, "msg": f"'{when_utc_iso}' is not a valid timestamp."}
+    if when <= datetime.now(timezone.utc):
+        return {"ok": False, "msg": "That time is in the past. Pick a future time."}
+
+    posts_ledger.schedule(record_id, when_utc_iso)
+    return {"ok": True, "msg": f"{record_id} scheduled."}
+
+
+def requeue_item(record_id: str) -> dict:
+    """Put a failed or missed item back in the approval queue, clearing the
+    old error and any stale schedule so it cannot fire unexpectedly."""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["status"] not in ("failed", "missed", "rejected", "publishing"):
+        return {"ok": False,
+                "msg": f"{record_id} is '{record['status']}'; nothing to requeue."}
+    posts_ledger.update(record_id, status="queued", scheduled_for=None, error=None)
+    return {"ok": True, "msg": f"{record_id} is back in the queue."}
+
+
+def cancel_schedule(record_id: str) -> dict:
+    """Pull a scheduled item back into the queue so it will not auto-post."""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["status"] != "scheduled":
+        return {"ok": False, "msg": f"{record_id} is not scheduled."}
+    posts_ledger.unschedule(record_id)
+    return {"ok": True, "msg": f"{record_id} unscheduled and back in the queue."}
 
 
 def cmd_list() -> None:

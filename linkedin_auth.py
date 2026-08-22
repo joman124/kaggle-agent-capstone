@@ -87,7 +87,7 @@ def _require(name: str) -> str:
 
 
 def _headers(token: str) -> dict:
-    api_version = os.getenv("LINKEDIN_API_VERSION", "202405").strip()
+    api_version = os.getenv("LINKEDIN_API_VERSION", "202608").strip()
     return {
         "Authorization": f"Bearer {token}",
         "LinkedIn-Version": api_version,

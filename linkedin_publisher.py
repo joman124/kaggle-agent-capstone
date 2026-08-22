@@ -28,6 +28,12 @@ load_dotenv(override=True)
 
 POSTS_URL = "https://api.linkedin.com/rest/posts"
 
+# LinkedIn's versioned API takes a YYYYMM month and retires each one after
+# about a year, so a hard-coded version silently rots: every call starts
+# failing with HTTP 426 NONEXISTENT_VERSION. Override in .env with
+# LINKEDIN_API_VERSION when this one ages out.
+DEFAULT_API_VERSION = "202608"
+
 
 def _dry_run_default() -> bool:
     """Dry run is ON unless .env explicitly says false. Fail safe: an unset
@@ -53,7 +59,7 @@ def _build_payload(commentary: str, actor_urn: str) -> dict:
 
 
 def _api_headers(token: str) -> dict:
-    api_version = os.getenv("LINKEDIN_API_VERSION", "202405").strip()
+    api_version = os.getenv("LINKEDIN_API_VERSION", DEFAULT_API_VERSION).strip()
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -135,6 +141,18 @@ def post_text(commentary: str, dry_run: bool = None, first_comment: str = None) 
             "your token is valid and has w_member_social (member) or "
             "w_organization_social (organization), and that the actor URN "
             f"matches the token. HTTP {resp.status_code}: {resp.text[:300]}"
+        )
+    if resp.status_code == 426:
+        # The version month itself has been retired. Called out separately
+        # because the generic message below reads like a transient API fault,
+        # when the real fix is a one-line .env change.
+        raise SystemExit(
+            f"\n[LINKEDIN] LinkedIn has retired API version "
+            f"'{_api_headers(token)['LinkedIn-Version']}'. Versions are YYYYMM "
+            "months and stop working after about a year.\n"
+            "Fix: set LINKEDIN_API_VERSION in .env to a recent month (the "
+            "current month is a safe choice), then try again.\n"
+            f"LinkedIn said: {resp.text[:200]}"
         )
     if resp.status_code not in (200, 201):
         raise SystemExit(

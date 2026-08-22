@@ -1,5 +1,8 @@
 # Secrets
 .env
+# Backups of .env hold real keys too -- ".env" alone does not match these.
+.env.*
+!.env.example
 
 # Generated content (draft posts, often unpublished/personal)
 *.docx

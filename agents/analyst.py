@@ -3,7 +3,7 @@
 The Analyst agent: ingests engagement data, computes performance per pillar
 and platform, compares it against a target engagement rate, and produces
 recommendations the Strategist can use to adjust pillar weighting over time.
-Pure logic, no Gemini calls.
+Pure logic, no model calls.
 
 Each entry in memory/engagement_data.json is one published post's metrics:
 {"pillar": str, "platform": "linkedin"|"substack", "likes": int,

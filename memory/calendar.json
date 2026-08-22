@@ -3,36 +3,36 @@
     "day": "Day 1",
     "pillar": "Clinical Window",
     "platform": "linkedin",
-    "topic": "Explore the patient narratives around 'AI brain fry' and the phenomenon of outsourcing confidence to AI, creating a composite patient story that illustrates the struggle with self-trust and the subsequent burnout when constantly seeking validation from a machine.",
-    "source_headline": "Workers Experiencing 'AI Brain Fry' and Outsourcing Confidence to Bots, Leading to Burnout"
+    "topic": "Frame the economists-vs-graduates gap as a clinical phenomenon John sees weekly \u2014 the specific despair of having your suffering statistically invalidated \u2014 and explain why 'the data doesn't support your fear' is the least therapeutic sentence in the English language.",
+    "source_headline": "Recent college graduates insist AI is killing their job prospects while economists say the data doesn't clearly support it"
   },
   {
     "day": "Day 2",
     "pillar": "The Thesis",
     "platform": "linkedin",
-    "topic": "Discuss the implications of formally recognizing 'AI Replacement Dysfunction' (AIRD) as a clinical framework, exploring how it legitimizes the psychological distress many are feeling and provides a structured approach for mental health professionals to intervene.",
-    "source_headline": "New Clinical Framework 'AI Replacement Dysfunction' (AIRD) Proposed for Job Loss Anxiety"
+    "topic": "Push the core thesis further: the C-suite and the teenager are converging because AI collapses the developmental function of work itself \u2014 competence used to be earned through struggle over time, and when the struggle is outsourced, identity has nothing to consolidate around at any age.",
+    "source_headline": "Commentary arguing AI is triggering the same identity crisis in senior executives that it is in adolescents"
   },
   {
     "day": "Day 3",
     "pillar": "Personal",
     "platform": "substack",
-    "topic": "Reflect on a personal experience where relying on AI for a task might have subtly dulled critical thinking or problem-solving skills, and discuss the self-awareness needed to balance AI's efficiency with maintaining cognitive sharpness.",
-    "source_headline": "AI's Impact on Critical Thinking: Concerns Over Diminished Analytical Skills with Over-Reliance"
+    "topic": "Confess the uncomfortable parallel: John should describe the week he caught himself drafting a condolence note with AI, and ask why we're regulating teenagers' emotional outsourcing while adults quietly automate their own capacity for hard conversations.",
+    "source_headline": "OpenAI launches a teen-specific ChatGPT experience while facing wrongful death litigation over chatbot harms"
   },
   {
     "day": "Day 4",
     "pillar": "Applied Philosophy",
     "platform": "linkedin",
-    "topic": "Examine the philosophical underpinnings of why passive reliance on AI, where tasks are merely copied and pasted, erodes an individual's sense of purpose and self-worth in their work, connecting it to existential dread.",
-    "source_headline": "Passive AI Use at Work Leads to Feelings of Meaninglessness and Reduced Self-Efficacy"
+    "topic": "Use Ubuntu's 'I am because we are' to argue that the Hyundai strikers are not fighting for wages but for the relational fabric a shared shop floor creates \u2014 and that a severance check cannot compensate a person for the loss of the people who witnessed their working life.",
+    "source_headline": "Hyundai's union walks out as automation and humanoid robots become a central bargaining demand alongside pay and retirement age"
   },
   {
     "day": "Day 5",
     "pillar": "Current Events",
     "platform": "linkedin",
-    "topic": null,
-    "source_headline": null
+    "topic": "Write about what it does to a 23-year-old's developing sense of competence when the first rung of the ladder is removed before they ever touch it \u2014 Erikson's identity-vs-role-confusion crisis is now being resolved by a spreadsheet at Goldman rather than by lived work experience.",
+    "source_headline": "Goldman Sachs research puts numbers on AI's hiring squeeze, finding entry-level roles and call centers absorbing the sharpest losses"
   },
   {
     "day": "Day 6",
@@ -45,7 +45,7 @@
     "day": "Day 7",
     "pillar": "The Thesis",
     "platform": "substack",
-    "topic": "Analyze how transparent, supportive AI integration, paired with training and a culture of psychological safety, can be a protective factor against the negative psychological impacts of AI, rather than a sole focus on threat mitigation.",
-    "source_headline": "AI Integration and Psychological Safety: Crucial for Employee Satisfaction and Retention"
+    "topic": null,
+    "source_headline": null
   }
 ]

@@ -1,5 +1,35 @@
 # Status — as of Step 8 (June 24, 2026)
 
+## Migrated from Gemini to Claude (August 1, 2026)
+
+The whole system now calls Anthropic instead of Google. Every agent already
+went through one wrapper, so the swap was that module plus its import line.
+
+- `gemini_client.py` -> `anthropic_client.py`, same `generate()` signature.
+  Roughly 90 lines shorter: the hand-rolled retry loop is gone (the SDK
+  retries 429/5xx itself) along with the Gemini response-shape handling
+  (`_debug_candidates`, thought-part walking, `finish_reason` decoding).
+  What stayed is the plain-English error handling.
+- `.env`: `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` / `ANTHROPIC_WRITER_MODEL`.
+  Both models default to `claude-opus-5`; `claude-sonnet-5` is the cheap
+  option for Scout and the voice judge, which are not drafting calls.
+- Scout's Google Search grounding -> Claude's server-side `web_search` tool.
+- Per-call token + USD logging into `logs/agent_trace.jsonl`; read it with
+  `python anthropic_client.py`.
+- `test_anthropic_client.py`: 20 tests, no live calls.
+- Behavior change to know about: `temperature` is rejected by Opus 5, so the
+  per-content-type values in `PLATFORM_RULES` no longer vary output.
+- Voice: the `john-voice` skill's Part 2 (banned AI vocabulary, vague
+  attribution, wrap-up openers) and its Part 3 fragment-triad sweep are now
+  enforced in `voice_profile.py` / `guardrails.py`. Six words
+  (foster, harness, profound, robust, crucial, enduring) are scoped to their
+  AI construction rather than banned bare, because "foster care" and
+  "profound grief" are legitimate clinical prose and every false positive
+  costs a redraft. Tests pin both directions.
+- Estimated cost: about $0.90 per weekly cycle, $4-30/month depending on how
+  often the reaction cycle runs. The trace file replaces that estimate with a
+  measurement after the first real run.
+
 ## Added after Step 8: Viral agent (fast hot-topic reactions)
 - `agents/viral.py`: turns a hot topic into a short LinkedIn post
   (`PLATFORM_RULES["linkedin_viral"]`, 50-150 words) and a Substack Note
@@ -13,7 +43,7 @@
 - Orchestrator routes "go viral about X" / "react to X" to `_handle_viral`.
   Requires the LinkedIn OAuth token described in `.env.example` before live
   posting; runs end to end in dry run without it.
-- `engagement.py`: a pure-logic (no Gemini) reach critic -- hook length, no
+- `engagement.py`: a pure-logic (no model calls) reach critic -- hook length, no
   question opener, hashtag count, length budget, emoji policy. Threaded into
   `draft_with_guardrails` via the new `extra_checks` hook, so a viral draft
   must pass BOTH the voice judge and the engagement gate, and the engagement
@@ -45,8 +75,10 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
 
 ## Done
 - Project scaffolded locally on Windows (venv, Python 3.14).
-- `google-genai` SDK installed and working. API key valid.
-- `check_setup.py` lists 37 available models; using `gemini-2.5-flash`.
+- The `anthropic` SDK is installed and the full offline test suite passes.
+  (Historical: this line read `google-genai` / `gemini-2.5-flash` before the
+  August 1 migration.) A live key has not been exercised on the Claude path
+  yet -- run `python check_setup.py` first.
 - `voice_profile.py` complete: VOICE_SYSTEM_PROMPT, ANTI_AI_TELL_PROMPT,
   BANNED_PHRASES (47, includes "quietly"), NEGATIVE_PARALLELISM_FLAGS,
   REFERENCE_PASSAGES (3, from the preface), PLATFORM_RULES.
@@ -54,32 +86,31 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
 - **Step 2 refactor done.** `step1_writer.py` is retired; its logic is fully
   folded into `agents/writer.py`. First-pass guardrail checks moved to
   `guardrails.py` (shared, importable by future agents). Writer reads its
-  model from `GEMINI_WRITER_MODEL` (defaults to a `-pro` model) instead of
-  sharing `GEMINI_MODEL` with other agents, since draft quality matters most
+  model from `ANTHROPIC_WRITER_MODEL` (defaults to the strongest model) instead of
+  sharing `ANTHROPIC_MODEL` with other agents, since draft quality matters most
   for the Writer.
-- **Step 3 done.** `agents/scout.py`: Gemini + Google Search grounding
-  (`types.Tool(google_search=types.GoogleSearch())`), uses `GEMINI_MODEL`
-  (Flash). Takes an optional topic argument; returns a JSON array of 3-5
+- **Step 3 done.** `agents/scout.py`: Claude + server-side web search
+  (`WEB_SEARCH_TOOL` from `anthropic_client`), uses `ANTHROPIC_MODEL`. Takes an optional topic argument; returns a JSON array of 3-5
   briefings (headline, source, relevance_score, suggested_angle,
   suggested_pillar, suggested_platform). The retry/error-handling logic
   that used to live only in the Writer was pulled out into
-  `gemini_client.generate()` so Scout (and future agents) share it instead
+  `anthropic_client.generate()` so Scout (and future agents) share it instead
   of duplicating it.
 - `.gitignore` added (`.env`, `__pycache__/`, venv dirs) — there was none
   before; a real `.env` had never been committed, but nothing protected one.
 - Verified output: a real in-voice post generated and passed guardrails clean
   (under the old `step1_writer.py`; re-verify Writer and Scout under the new
   module layout next time the API key is available).
-- `.env.example` added, documenting `GEMINI_API_KEY`, `GEMINI_MODEL`, and
-  `GEMINI_WRITER_MODEL` with no real values. This does not give Claude a
+- `.env.example` added, documenting `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and
+  `ANTHROPIC_WRITER_MODEL` with no real values. This does not give Claude a
   working key in the dev sandbox; Scout and Writer still need John's real
-  `.env` to verify their actual Gemini calls.
+  `.env` to verify their actual model calls.
 - Writer now saves posts via `doc_output.py` (`append_to_doc()`) into
   `LinkedIn Posts.docx` instead of printing markdown, since John reviews
   from the docx. Creates the doc with a title heading on first run, appends
   a dated H2 section per post after that. Verified in an isolated venv
   (create + two appends, no overwrite). `*.docx` is gitignored.
-- **Step 4 done.** `agents/strategist.py`: pure logic, no Gemini calls.
+- **Step 4 done.** `agents/strategist.py`: pure logic, no model calls.
   Reads `memory/content_history.json`, computes a rolling 30-day pillar
   distribution, writes it to `memory/pillar_tracker.json`, ranks pillars
   least-used-first, applies a fixed platform cadence (originally 3 LinkedIn :
@@ -126,10 +157,10 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   the throwaway seed and keep the essay's own full guardrail loop as the
   real quality gate. Roughly halves the cost of every Substack day with no
   change to what John actually sees. Verified by stubbing
-  `gemini_client.generate`: `generate_seed_post()` makes exactly one call.
+  `anthropic_client.generate`: `generate_seed_post()` makes exactly one call.
 - **Step 5 done.** `agents/orchestrator.py`: `route()` classifies a
   natural-language request into an intent + topic via deterministic
-  keyword matching (no Gemini call) so it is fully unit-tested without an
+  keyword matching (no model call) so it is fully unit-tested without an
   API key. `handle_request()` then runs the matched pipeline. Verified:
   all 6 routing cases (weekly plan, trending, LinkedIn post + topic,
   essay + topic, engagement, unrecognized) classify correctly.
@@ -148,7 +179,7 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
 
 - **Step 6 done.** `guardrails.py` gained `judge_voice()` (LLM-as-a-judge
   against `REFERENCE_PASSAGES`, scores voice_score 0-10 and tone, on
-  `GEMINI_MODEL`/Flash since this is evaluation not generation), `evaluate()`
+  `ANTHROPIC_MODEL`/Flash since this is evaluation not generation), `evaluate()`
   (combines first-pass checks + the judge into one pass/fail + feedback
   string), and `draft_with_guardrails()` -- the shared generate-evaluate-
   revise loop (up to 3 attempts, judge feedback fed into the next prompt's
@@ -156,13 +187,13 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   both route their drafting through it now (`draft_linkedin_post()` /
   `draft_essay()`); `write_linkedin_post()` and `expand_to_essay()` stay as
   thin wrappers so the Orchestrator's calls did not need to change.
-  Verified by stubbing `gemini_client.generate` and monkeypatching
+  Verified by stubbing `anthropic_client.generate` and monkeypatching
   `guardrails.judge_voice` to fail twice then pass: 3 logged attempts,
   feedback correctly propagated into each next prompt, early stop on pass;
   a second run where the judge never passes confirmed it stops at
   `max_attempts` with `passed: False` instead of looping forever.
 - **Step 7 done.** `agents/analyst.py` + `memory/engagement_data.json`
-  (seeded empty). Pure logic, no Gemini calls. Computes an impressions-
+  (seeded empty). Pure logic, no model calls. Computes an impressions-
   weighted engagement rate per pillar, compares it to a placeholder 3%
   target rate, and turns the comparison into a `{pillar: +1/-1/0}`
   adjustment map the Strategist now consumes (`plan_week()` gained a
@@ -241,9 +272,11 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
      Windows (it will prompt for your Windows password once to save it).
      If left unchecked, the task only runs while you are logged in,
      which is fine for most setups.
-  Each run draws on the prepaid Gemini balance - keep an eye on
-  https://ai.studio/projects so a scheduled run does not silently fail
-  the same way the manual runs did during the June 25 debugging session.
+  Each run bills the Anthropic key - roughly $0.90 per weekly cycle and
+  $0.29 per reaction cycle at current estimates. Watch actual spend with
+  `python anthropic_client.py`, and set a monthly cap at
+  https://console.anthropic.com/settings/limits so a scheduled run cannot
+  quietly run up a bill the way the June 25 session burned Gemini quota.
 
   **Checking whether a scheduled run worked (added July 5, after a week
   where drafts silently did not generate).** `run_weekly.bat` now writes
@@ -265,8 +298,8 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
 
 ## Resolved decisions
 - `step1_writer.py` retired, folded into `agents/writer.py`. (was open)
-- Writer uses a `-pro` model (`GEMINI_WRITER_MODEL`, default
-  `gemini-pro-latest`); other agents use `GEMINI_MODEL` (Flash). (was open)
+- Writer uses a `-pro` model (`ANTHROPIC_WRITER_MODEL`, default
+  `gemini-pro-latest`); other agents use `ANTHROPIC_MODEL` (Flash). (was open)
 - **Per-content-type temperature tuning (June 27). (was open)** Each
   `PLATFORM_RULES` entry now carries a `temperature`: essays 0.6 (cooler,
   for control and consistency across 800-1500 words), LinkedIn posts 0.8,
@@ -316,17 +349,53 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   manual/empty; a paste-in engagement form is a possible follow-up so the
   Analyst gets real numbers too.)
 
-## Known gotchas (do not relearn these)
+## Known gotchas (current -- Claude / Anthropic)
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
+  Still true, and the one gotcha below that survived the migration.
+- Use the official `anthropic` SDK. Every call goes through
+  `anthropic_client.generate()`; never construct a second client elsewhere.
+- **Claude Opus 5 rejects `temperature` with a 400.** `generate()` accepts
+  the argument and drops it, so the per-content-type values in
+  `PLATFORM_RULES` no longer change anything. Steer tone in the prompt. To
+  get a real knob back, map those rules onto
+  `output_config={"effort": ...}` inside `generate()`.
+- **Thinking is on by default and bills as output at $25/MTok.** It is the
+  single biggest line item, and `max_tokens` caps thinking + answer
+  together, so a tight `max_tokens` truncates the answer rather than the
+  thinking. `MAX_TOKENS` in `anthropic_client.py` is 16000.
+- **Do not hand-roll retry.** The SDK already retries 429/5xx with backoff.
+  `LLM_CALL_PACING_SECONDS` now defaults to 0; the old 8s sleep existed only
+  for Gemini's free-tier burst limit and was pure latency.
+- **A refusal is an HTTP 200, not an exception.** Check
+  `stop_reason == "refusal"` before reading content; `generate()` does this
+  and raises a plain-English `[DECLINED]`.
+- **`content[0]` is not the answer.** Claude interleaves thinking, tool_use,
+  and web-search-result blocks with text. Filter on `.type == "text"`; that
+  is what `_extract_text()` does.
+- **Web search can pause a turn** (`stop_reason == "pause_turn"`) when the
+  server-side tool loop hits its cap. `generate()` resumes it up to
+  `_MAX_RESUMES` times. Without that, Scout silently returns a truncated
+  answer with no error.
+- Every call logs tokens + USD to `logs/agent_trace.jsonl`. Read it with
+  `python anthropic_client.py`.
+
+## Known gotchas from the Gemini era (historical)
+
+> Kept for the reasoning, not as instructions. These describe the
+> `google-genai` build that ran until the July 2026 migration to Claude.
+> None of them are actionable now -- there is no `ThinkingConfig`, no
+> `finish_reason`, and no free-tier daily cap on the Anthropic path. Do not
+> try to apply these fixes to `anthropic_client.py`.
+
 - `google-genai`, not `google-generativeai`.
 - Free tier rate-limits hard; keep retry/backoff and pacing.
 - A "[QUOTA]"/429 message can mean two different things and they need
   different fixes. (1) A per-minute throttle from bursting too many calls
   at once - clears in under 60s. The weekly-plan pipeline alone can fire
   dozens of calls (Writer's revise loop x3 attempts x2 calls/attempt, x5
-  days, plus Substack expansion), so `gemini_client.generate()` retries
+  days, plus Substack expansion), so `anthropic_client.generate()` retries
   429/RESOURCE_EXHAUSTED with backoff and `CALL_PACING_SECONDS`
-  (guardrails.py, 8s default, override via `GEMINI_CALL_PACING_SECONDS` in
+  (guardrails.py, 8s default, override via `LLM_CALL_PACING_SECONDS` in
   `.env`) paces calls inside `draft_with_guardrails()` and between
   days/agents in the Orchestrator's `_handle_weekly_plan()` and
   `_handle_essay()`. (2) A real account/project-level daily quota cap.
@@ -346,7 +415,7 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   linked AND enabled on that project (not just an AI Studio balance), and
   if quota is genuinely exhausted for the day, wait for the
   reset (around midnight Pacific) and retry a single small call before
-  the full weekly plan. The error message in `gemini_client.py` names the
+  the full weekly plan. The error message in `anthropic_client.py` names the
   failing model and walks through all of this instead of guessing
   per-minute or per-model-tier. Root cause this time turned out to be
   simpler than all of the above: the `.env` key belonged to a different,
@@ -356,10 +425,10 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   project" instead). Fixed by creating a new key under the correct
   project via "Use existing project" (not "Create API key in new
   project") at https://aistudio.google.com/app/apikey.
-- `load_dotenv()` in `check_setup.py` and `gemini_client.py` now passes
+- `load_dotenv()` in `check_setup.py` and `anthropic_client.py` now passes
   `override=True`. Without it, python-dotenv will NOT overwrite a
-  `GEMINI_API_KEY` that is already set as a real Windows environment
-  variable (System/User variables, or a leftover `set GEMINI_API_KEY=...`
+  `ANTHROPIC_API_KEY` that is already set as a real Windows environment
+  variable (System/User variables, or a leftover `set ANTHROPIC_API_KEY=...`
   from an earlier cmd session) - editing `.env` then silently does
   nothing, and the old key keeps getting used. This bit John directly
   after swapping to a new key: `.env` was updated but `check_setup.py`
@@ -376,13 +445,13 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   billing) at https://ai.studio/projects. Lesson for next time: Google's
   SDK error text is frequently already specific and correct - read it
   first before reasoning about per-minute vs per-model vs per-day quota.
-  `gemini_client.py`'s `[QUOTA]` message now prints Google's raw text up
+  `anthropic_client.py`'s `[QUOTA]` message now prints Google's raw text up
   front and only adds the generic per-minute/per-project/per-day checklist
   as a fallback when that text is not already self-explanatory.
 - **`response.text` can be `None` -- do not call `.strip()` on it blind
   (bug found July 5, from a real scheduled-run traceback).** The July 3
   scheduled run crashed with `AttributeError: 'NoneType' object has no
-  attribute 'strip'` at `gemini_client.generate()`'s `response.text.strip()`,
+  attribute 'strip'` at `anthropic_client.generate()`'s `response.text.strip()`,
   inside the Scout call. Gemini returns no text part (so `.text` is None)
   when a candidate is blocked OR when a "thinking" model like
   `gemini-2.5-flash` spends its whole output-token budget on internal
@@ -410,7 +479,7 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   thought-only, grounding-metadata-only, or genuinely zero parts.
 - Model name and key in `.env`, never in code.
 - If `gemini-pro-latest` is not in your key's available models, run
-  `check_setup.py` and set `GEMINI_WRITER_MODEL` in `.env` to a pro model
+  `check_setup.py` and set `ANTHROPIC_WRITER_MODEL` in `.env` to a pro model
   that is.
 - Scout has not yet been run against a real API key/quota in this session
   (no key available in the dev sandbox). Run `python -m agents.scout` once
@@ -427,7 +496,7 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
 - Same caveat again for Step 6's `judge_voice()` and `draft_with_guardrails()`
   loop: the control flow (retry on fail, feedback propagation, stop on pass
   or at max_attempts, one log line per attempt) was verified by stubbing
-  `gemini_client.generate` and monkeypatching `guardrails.judge_voice`
+  `anthropic_client.generate` and monkeypatching `guardrails.judge_voice`
   directly in the dev sandbox, since `google-genai` is not installed there.
   This proves the loop logic is correct; it does not prove the judge prompt
   itself reliably returns parseable JSON or sensible scores from a real
@@ -448,6 +517,14 @@ regenerated. This clears the "verified only via stubs" caveats listed above for
 Scout, the Orchestrator pipelines, the Substack Specialist, and Step 6's
 `judge_voice()`/`draft_with_guardrails()` loop -- they have now all run against
 real Gemini calls.
+
+> **That verification was against Gemini, and predates the August 1 migration
+> to Claude.** The call wrapper underneath all of it was replaced, so the
+> pipeline has NOT yet been run end to end on the Anthropic path. The full
+> test suite passes offline (`test_system.py`, `test_agents.py`,
+> `test_anthropic_client.py`), but no live Claude call has been made. First
+> real contact is `python check_setup.py`, then
+> `python -m agents.scout` as the cheapest single-call smoke test.
 
 Next: Step 9, Streamlit UI. Still pending: John's line-level voice feedback on
 the generated drafts (see "Voice feedback still pending" below) and the

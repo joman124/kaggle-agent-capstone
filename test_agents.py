@@ -2,7 +2,7 @@
 """
 Unit tests for the parts of the agent system that run without an API key:
 the Orchestrator's keyword routing, the pure-logic engagement critic, and the
-rule-based guardrail checks. These never call Gemini, so they are fast and
+rule-based guardrail checks. These never call the API, so they are fast and
 run in CI or offline.
 
 Run:  python -m unittest test_agents
@@ -120,6 +120,69 @@ class TestGuardrailRules(unittest.TestCase):
         text = f"He said it{CURLY_APOS}s fine."
         self.assertFalse(guardrails.run_guardrails(text)["clean"])
 
+
+
+class TestFragmentTriads(unittest.TestCase):
+    """john-voice Part 3, sweep 4: three or more consecutive short sentences
+    are the machine rhythm; one or two are the voice."""
+
+    def test_flags_a_verbless_triad(self):
+        # Arrange
+        text = "Structure. Status. A mission. That was what the work gave him."
+        # Act
+        hits = guardrails.find_fragment_triads(text)
+        # Assert
+        self.assertEqual(len(hits), 1)
+        self.assertIn("Structure.", hits[0])
+
+    def test_allows_two_short_sentences(self):
+        text = "He stopped. The pen kept rolling between his palms as he spoke."
+        self.assertEqual(guardrails.find_fragment_triads(text), [])
+
+    def test_long_sentence_breaks_the_run(self):
+        text = ("Short one. Short two. He sat with that for a long moment "
+                "before saying anything at all. Short three.")
+        self.assertEqual(guardrails.find_fragment_triads(text), [])
+
+    def test_triad_is_advisory_not_a_hard_fail(self):
+        # The whole point: short sentences ARE the voice, so a triad must not
+        # burn a redraft cycle on its own.
+        result = guardrails.run_guardrails("Structure. Status. A mission.")
+        self.assertTrue(result["fragment_triads"])
+        self.assertTrue(result["clean"])
+
+
+class TestBannedVocabulary(unittest.TestCase):
+    """john-voice Part 2 vocabulary is enforced, without false-positiving on
+    ordinary clinical prose."""
+
+    def _banned(self, text):
+        return guardrails.run_guardrails(text)["banned_phrases"]
+
+    def test_catches_ai_vocabulary(self):
+        for word in ["delve", "intricate", "garner", "holistic", "seamless"]:
+            with self.subTest(word=word):
+                self.assertTrue(self._banned(f"We {word} the problem here."))
+
+    def test_does_not_flag_legitimate_clinical_use(self):
+        # These would be false positives if the bare word were banned, and
+        # each one would cost a wasted redraft attempt.
+        for ok in ["He aged out of foster care at eighteen.",
+                   "She described a profound grief that had no name.",
+                   "The findings were robust across both samples.",
+                   "Worden calls it an enduring connection."]:
+            with self.subTest(text=ok):
+                self.assertEqual(self._banned(ok), [], msg=ok)
+
+    def test_catches_the_ai_construction_of_those_same_words(self):
+        for bad in ["The program aims to foster a sense of belonging.",
+                    "We must harness the power of this shift."]:
+            with self.subTest(text=bad):
+                self.assertTrue(self._banned(bad), msg=bad)
+
+    def test_catches_vague_attribution_and_wrapup_openers(self):
+        self.assertTrue(self._banned("Experts argue this is inevitable."))
+        self.assertTrue(self._banned("Ultimately, the work changes shape."))
 
 if __name__ == "__main__":
     unittest.main()

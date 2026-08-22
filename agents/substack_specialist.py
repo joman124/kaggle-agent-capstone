@@ -5,7 +5,7 @@ Substack essay. Uses the LinkedIn post as a seed and goes deeper into the
 stories, concepts, and arguments it only had room to gesture at, rather
 than just padding the same paragraph longer.
 
-Uses the same pro-tier model as the Writer (GEMINI_WRITER_MODEL) since
+Uses the same pro-tier model as the Writer (ANTHROPIC_WRITER_MODEL) since
 draft quality matters here too. Saves essays to "Substack Essays.docx" via
 doc_output.py instead of printing markdown, since John reviews from the
 docx.
@@ -26,7 +26,7 @@ from agents.writer import write_linkedin_post
 
 # Shares the Writer's pro-tier model since this is also publication-quality
 # long-form content, not a quick draft.
-MODEL = os.getenv("GEMINI_WRITER_MODEL", "gemini-pro-latest")
+MODEL = os.getenv("ANTHROPIC_WRITER_MODEL", "claude-opus-5")
 SYSTEM_INSTRUCTION = VOICE_SYSTEM_PROMPT + "\n\n" + ANTI_AI_TELL_PROMPT
 SUBSTACK_DOC = "Substack Essays.docx"
 ESSAY_RULES = PLATFORM_RULES["substack_essay"]

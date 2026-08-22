@@ -32,7 +32,7 @@ Must demonstrate at least 3 course concepts; this project hits 5:
 | Concept | Day | Where |
 |--------|-----|-------|
 | Agentic architecture (multi-agent) | 1 | Orchestrator + 4 agents |
-| Tool use / interoperability | 2 | Scout: Google Search grounding |
+| Tool use / interoperability | 2 | Scout: Claude server-side web search |
 | Context engineering: memory & state | 3 | Strategist: history + pillar state |
 | Quality: guardrails & evaluation | 4 | Writer: voice scoring, banned phrases, tone |
 | Prototype to production | 5 | Streamlit + Cloud Run + observability |

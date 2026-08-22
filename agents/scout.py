@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 The Scout agent: finds trending topics at the intersection of AI, work, and
-psychology using Gemini with Google Search grounding, so results reflect
+psychology using Claude with server-side web search, so results reflect
 current events rather than the model's training-data recall.
 
 Run:  python -m agents.scout ["optional topic to focus the search"]
@@ -9,9 +9,10 @@ Run:  python -m agents.scout ["optional topic to focus the search"]
 
 import json
 import os
+import re
 import sys
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5")
 
 PILLARS = [
     "Clinical Window",
@@ -60,42 +61,81 @@ For each one, return an object with exactly these six keys:
 Return ONLY a JSON array of {count} objects. No markdown code fences, no
 preamble, no explanation - just the raw JSON array."""
 
-    # Imported lazily so the module imports without google-genai installed
-    # (routing/tests do not need it); only this grounded call does.
-    from google.genai import types
-    from gemini_client import generate
+    # Imported lazily so the module imports without the anthropic SDK
+    # installed (routing/tests do not need it); only this grounded call does.
+    from anthropic_client import generate, WEB_SEARCH_TOOL
 
-    # gemini-2.5-flash is a thinking model; with Google Search grounding it
-    # was returning finish_reason=STOP but empty text (the whole turn went to
-    # thought parts). Disabling thinking for this grounded call makes it emit
-    # the JSON answer again. Writer/Substack keep thinking for draft quality.
+    # Claude's server-side web search replaces Gemini's Google Search
+    # grounding: the search runs on Anthropic's side and the results come
+    # back in the same response, so nothing else here changes.
     raw = generate(
         MODEL,
         prompt,
         system_instruction=SYSTEM_INSTRUCTION,
-        tools=[types.Tool(google_search=types.GoogleSearch())],
-        disable_thinking=True,
+        tools=[WEB_SEARCH_TOOL],
     )
     return _parse_json_array(raw)
 
 
 def _parse_json_array(raw: str) -> list:
-    """Strip markdown fences if the model added them anyway, then parse.
-    Fails with the raw output shown rather than a bare JSONDecodeError."""
+    """Strip markdown fences and any preamble text the model added despite
+    being told not to, then parse. If the array itself got cut off by the
+    model's output limit mid-object, salvage the complete objects that came
+    before the cut rather than discarding the whole response. Fails with the
+    raw output shown rather than a bare JSONDecodeError."""
     text = raw.strip()
     if text.startswith("```"):
         text = text.strip("`")
         if text.lower().startswith("json"):
             text = text[4:]
         text = text.strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
+    # Anchor on "[" immediately followed by "{" -- the start of an array of
+    # objects -- rather than the first "[" anywhere. Web-search grounded
+    # replies often cite sources as "[1]" in the preamble before the real
+    # array; a bare find("[") would lock onto that citation and either fail
+    # or (worse) successfully parse it as a throwaway one-element array,
+    # silently discarding the real data.
+    match = re.search(r"\[\s*\{", text)
+    if not match:
         raise SystemExit(
-            "\n[SCOUT] Gemini did not return valid JSON. Raw output:\n" + raw[:800]
+            "\n[SCOUT] Claude did not return valid JSON. Raw output:\n" + raw[:800]
+        )
+    text = text[match.start():]
+
+    data = None
+    try:
+        # raw_decode stops at the end of the first JSON value, so trailing
+        # prose after a complete array (e.g. the model adding a sign-off) is
+        # ignored instead of breaking the parse.
+        data, _ = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        # The array was cut off before its closing bracket (hit MAX_TOKENS
+        # mid-object). Walk backward through "}," candidates -- the rightmost
+        # one is not always a real object boundary (it can land inside a
+        # string) so keep trying earlier ones until a close actually parses,
+        # instead of giving up on the first attempt.
+        pos = len(text)
+        while True:
+            pos = text.rfind("},", 0, pos)
+            if pos == -1:
+                break
+            try:
+                data, _ = json.JSONDecoder().raw_decode(text[:pos + 1] + "]")
+                break
+            except json.JSONDecodeError:
+                continue
+
+    if data is None:
+        raise SystemExit(
+            "\n[SCOUT] Claude did not return valid JSON. Raw output:\n" + raw[:800]
         )
     if not isinstance(data, list):
         raise SystemExit(f"\n[SCOUT] Expected a JSON array of topics, got: {type(data)}")
+    if not data:
+        raise SystemExit(
+            "\n[SCOUT] Claude's response was cut off before any complete topic. "
+            "Raw output:\n" + raw[:800]
+        )
     return data
 
 

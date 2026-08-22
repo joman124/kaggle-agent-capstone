@@ -37,7 +37,7 @@ PILLARS = [
 
 
 # --------------------------------------------------------------------------
-# Data helpers (read-only; no Gemini calls, safe to run anytime)
+# Data helpers (read-only; no model calls, safe to run anytime)
 # --------------------------------------------------------------------------
 def load_calendar():
     """Return the planned week as a list of day dicts, or [] if none yet."""
@@ -110,15 +110,18 @@ def load_trace(limit=40):
 
 
 def has_api_key():
-    return bool(os.getenv("GEMINI_API_KEY"))
+    return bool(os.getenv("ANTHROPIC_API_KEY"))
 
 
 def render_draft_column(doc_path, platform):
-    """One Drafts-tab column: every draft in an expander, each with a
-    'Mark as published' control that appends the publish event to
-    memory/content_history.json -- the write-back that lets the
-    Strategist's rolling pillar balance see what actually went out."""
+    """One Drafts-tab column: every draft in an editable box, each with an
+    'Add to queue' control that sends the edited text to the Approval Queue
+    (where it can be published now or scheduled), plus a 'Mark as published'
+    control that appends the publish event to memory/content_history.json --
+    the write-back that lets the Strategist's rolling pillar balance see what
+    actually went out."""
     from publish_log import is_published, mark_published
+    import posts_ledger
 
     drafts = load_drafts(doc_path)
     if not drafts:
@@ -126,6 +129,18 @@ def render_draft_column(doc_path, platform):
         return
 
     st.caption("%d draft(s) in %s" % (len(drafts), doc_path))
+
+    # Headings are not unique: two drafts share one when neither day had a
+    # Scout topic, so both fall back to "<pillar> -- <date>". Number the
+    # repeats to get a per-draft id that is unique (Streamlit widget keys
+    # must be) and stable (counted in document order, so appending a new
+    # draft never renumbers the existing ones -- a positional index over the
+    # reversed list would shift every key and scatter in-progress edits).
+    seen = {}
+    for e in drafts:
+        n = seen.get(e["heading"], 0) + 1
+        seen[e["heading"]] = n
+        e["uid"] = "%s #%d" % (e["heading"], n)
 
     # Guess each draft's pillar from the calendar: the Orchestrator uses the
     # day's topic (or bare pillar name) as the docx heading, so a match here
@@ -137,10 +152,40 @@ def render_draft_column(doc_path, platform):
         if key:
             topic_to_pillar[key] = d.get("pillar")
 
-    for i, e in enumerate(reversed(drafts)):
+    # Which drafts are already in the queue, so one cannot be added twice.
+    # Read off the ledger itself rather than kept in a second state file, so
+    # there is nothing to fall out of sync. A rejected item can be requeued.
+    # Matched on the uid above, not the topic: days with no Scout topic use
+    # the bare pillar name, so two weeks' "Clinical Window" drafts share a
+    # topic and queueing one would wrongly lock the other.
+    in_ledger = {}
+    for r in posts_ledger.load():
+        if r.get("source") and r.get("status") != "rejected":
+            in_ledger[r["source"]] = r.get("status")
+
+    for e in reversed(drafts):
         label = e["heading"][:90] + ("..." if len(e["heading"]) > 90 else "")
+        topic = e["heading"].rsplit(" -- ", 1)[0]
         with st.expander(label):
-            st.write(e["body"])
+            # Editable, so John can rewrite before queueing -- what the button
+            # below queues is whatever is in this box.
+            edited = st.text_area(
+                "Draft", value=e["body"], height=320,
+                key="draft-%s-%s" % (platform, e["uid"]),
+                label_visibility="collapsed",
+            )
+
+            queued_status = in_ledger.get(e["uid"])
+            if queued_status:
+                st.info("Already in the Approval Queue (status: %s). Publish "
+                        "or schedule it from that tab." % queued_status)
+            elif st.button("Add to queue", type="primary", width="stretch",
+                           key="queue-%s-%s" % (platform, e["uid"])):
+                posts_ledger.add(topic, edited, platform,
+                                 pillar=topic_to_pillar.get(topic),
+                                 source=e["uid"])
+                st.rerun()
+
             st.divider()
             if is_published(e["heading"]):
                 st.success("Published -- recorded in content history.")
@@ -152,13 +197,13 @@ def render_draft_column(doc_path, platform):
                 with col_p:
                     pillar = st.selectbox(
                         "Pillar", PILLARS, index=default_idx,
-                        key="pillar-%s-%d" % (doc_path, i),
+                        key="pillar-%s-%s" % (doc_path, e["uid"]),
                         label_visibility="collapsed",
                     )
                 with col_b:
                     if st.button(
                         "Mark as published",
-                        key="publish-%s-%d" % (doc_path, i),
+                        key="publish-%s-%s" % (doc_path, e["uid"]),
                         width="stretch",
                     ):
                         mark_published(e["heading"], pillar, platform)
@@ -180,14 +225,14 @@ st.caption(
 with st.sidebar:
     st.header("System status")
     if has_api_key():
-        st.success("GEMINI_API_KEY loaded")
+        st.success("ANTHROPIC_API_KEY loaded")
     else:
-        st.error("No GEMINI_API_KEY found. Live runs are disabled.")
+        st.error("No ANTHROPIC_API_KEY found. Live runs are disabled.")
         st.caption("Set it in .env, then restart. Read-only views still work.")
 
     st.write("**Models**")
-    st.write("- Agents / judge: `%s`" % (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"))
-    st.write("- Writer: `%s`" % (os.getenv("GEMINI_WRITER_MODEL") or "gemini-pro-latest"))
+    st.write("- Agents / judge: `%s`" % (os.getenv("ANTHROPIC_MODEL") or "claude-opus-5"))
+    st.write("- Writer: `%s`" % (os.getenv("ANTHROPIC_WRITER_MODEL") or "claude-opus-5"))
 
     st.divider()
     st.header("The agents")
@@ -199,10 +244,39 @@ with st.sidebar:
         "5. **Analyst** - learns from engagement, adjusts pillars\n"
         "6. **Viral** - fast hot-topic reactions, auto-posts to LinkedIn"
     )
-    if os.getenv("LINKEDIN_DRY_RUN", "true").strip().lower() != "false":
-        st.caption("LinkedIn posting: DRY RUN (set LINKEDIN_DRY_RUN=false to go live)")
+    st.divider()
+    st.header("LinkedIn posting")
+
+    import publish_settings
+
+    mode = publish_settings.status()
+    if not mode["ready"]:
+        st.error("No LinkedIn token yet. Run: python linkedin_auth.py")
+        st.caption("Publishing stays disabled until a token and actor URN exist.")
+    elif mode["live"]:
+        st.warning("LIVE - approved posts really publish")
     else:
-        st.caption("LinkedIn posting: LIVE")
+        st.info("DRY RUN - nothing publishes")
+
+    if mode["ready"]:
+        want_live = st.toggle(
+            "Enable live posting", value=mode["live"], key="live-toggle",
+            help=("Off means every publish is simulated. On means Publish now "
+                  "and scheduled posts really go to your LinkedIn profile."),
+        )
+        if want_live != mode["live"]:
+            # Only trust an explicit confirmation for the dangerous direction.
+            if want_live:
+                st.warning("This lets posts publish publicly as you.")
+                if st.button("Yes, turn live posting on", type="primary",
+                             width="stretch", key="confirm-live"):
+                    publish_settings.set_live(True)
+                    st.rerun()
+            else:
+                publish_settings.set_live(False)
+                st.rerun()
+        st.caption("Posting as `%s`" % mode["actor"])
+
     st.divider()
     st.caption("Kaggle AI Agents Capstone - Agents for Business")
 
@@ -229,7 +303,7 @@ st.caption(
 
 with st.expander("Note on live runs (cost + time)"):
     st.markdown(
-        "A full weekly plan makes many live Gemini calls (Scout, then the "
+        "A full weekly plan makes many live model calls (Scout, then the "
         "Writer's revise loop per post, plus Substack expansions) and can take "
         "a few minutes with rate-limit pacing. It also draws on the prepaid "
         "API balance. For a fast, free demo, use the **This Week's Plan**, "
@@ -250,7 +324,7 @@ if run and request.strip():
             st.success("Done. Drafts (if any) were saved to the Word documents.")
             st.text_area("Response", value=result, height=360)
         except SystemExit as exc:
-            # gemini_client raises SystemExit with a plain-English message on
+            # anthropic_client raises SystemExit with a plain-English message on
             # quota / auth / empty-response failures. Show it, do not crash.
             st.error(str(exc))
         except Exception as exc:  # noqa: BLE001 - surface anything else cleanly
@@ -329,31 +403,145 @@ with tab_plan:
         st.dataframe(rows, width="stretch", hide_index=True)
 
 with tab_queue:
+    from datetime import datetime, time as dtime, timedelta, timezone
+
     import posts_ledger
+    import publish_settings
     import review
+
+    live_mode = publish_settings.status()
+
+    def _to_utc_iso(day, clock):
+        """Combine a local date + time from the pickers into a UTC timestamp.
+        A naive datetime's .astimezone() assumes local time, which is exactly
+        what John typed, so this converts rather than mislabels."""
+        naive = datetime.combine(day, clock)
+        return naive.astimezone().astimezone(timezone.utc).isoformat()
+
+    def _local_label(timestamp):
+        parsed = posts_ledger._parse(timestamp)
+        return parsed.astimezone().strftime("%a %d %b, %H:%M") if parsed else "?"
 
     queued = posts_ledger.by_status("queued")
     st.caption(
-        "Reactions waiting for your approval. Approving a LinkedIn item posts it "
-        "(honors LINKEDIN_DRY_RUN); a Substack Note is marked done for you to "
-        "paste in. %d item(s) queued." % len(queued)
+        "Reactions waiting for you. LinkedIn items can be published now or "
+        "scheduled; Substack has no API, so approving one just marks it done "
+        "for you to paste in. %d item(s) queued." % len(queued)
     )
+    if not live_mode["live"]:
+        st.info(
+            "DRY RUN is on, so Publish now is simulated and scheduled posts "
+            "stay put until you go live (they are not consumed). Turn on live "
+            "posting in the sidebar when you are ready."
+        )
+
     if not queued:
         st.info("Nothing queued. Use 'Fast reaction' above, or run the cycle.")
+
     for r in reversed(queued):
+        rid = r["id"]
         head = "[%s] %s" % (r["platform"], r["topic"])
         with st.expander(head[:100]):
             st.write(r.get("text") or "")
             st.divider()
-            ap, rj = st.columns(2)
-            with ap:
-                if st.button("Approve + post", key="ap-%s" % r["id"], width="stretch"):
-                    result = review.approve_item(r["id"])
+
+            if r["platform"] != "linkedin":
+                # Substack: unchanged behaviour -- mark done, paste it yourself.
+                done, rej = st.columns(2)
+                with done:
+                    if st.button("Mark as done", key="ap-%s" % rid, width="stretch"):
+                        result = review.approve_item(rid)
+                        (st.success if result["ok"] else st.error)(result["msg"])
+                        st.rerun()
+                with rej:
+                    if st.button("Reject", key="rj-%s" % rid, width="stretch"):
+                        review.reject_item(rid)
+                        st.rerun()
+                continue
+
+            st.markdown("**Publish now**")
+            confirm = True
+            if live_mode["live"]:
+                confirm = st.checkbox(
+                    "Yes - post this to my LinkedIn profile now",
+                    key="cf-%s" % rid,
+                )
+            now_col, rej_col = st.columns(2)
+            with now_col:
+                label = "Publish now" if live_mode["live"] else "Publish now (simulated)"
+                # Credentials are only required to post for real. A dry run
+                # needs none, so simulating stays available before OAuth setup.
+                blocked = live_mode["live"] and not live_mode["ready"]
+                if st.button(label, key="ap-%s" % rid, type="primary",
+                             width="stretch",
+                             disabled=not confirm or blocked):
+                    result = review.approve_item(rid)
                     (st.success if result["ok"] else st.error)(result["msg"])
                     st.rerun()
-            with rj:
-                if st.button("Reject", key="rj-%s" % r["id"], width="stretch"):
-                    review.reject_item(r["id"])
+            with rej_col:
+                if st.button("Reject", key="rj-%s" % rid, width="stretch"):
+                    review.reject_item(rid)
+                    st.rerun()
+
+            st.markdown("**Or schedule it**")
+            default_at = (datetime.now().astimezone() + timedelta(hours=1)).replace(
+                minute=0, second=0, microsecond=0)
+            d_col, t_col, s_col = st.columns([2, 2, 2])
+            with d_col:
+                day = st.date_input("Date", value=default_at.date(),
+                                    key="sd-%s" % rid)
+            with t_col:
+                clock = st.time_input("Time", value=dtime(default_at.hour, 0),
+                                      key="st-%s" % rid)
+            with s_col:
+                st.write("")
+                if st.button("Schedule", key="sc-%s" % rid, width="stretch",
+                             disabled=live_mode["live"] and not live_mode["ready"]):
+                    when_utc = _to_utc_iso(day, clock)
+                    if posts_ledger._parse(when_utc) <= datetime.now(timezone.utc):
+                        st.error("That time is in the past. Pick a future time.")
+                    else:
+                        result = review.schedule_item(rid, when_utc)
+                        (st.success if result["ok"] else st.error)(result["msg"])
+                        if result["ok"]:
+                            st.rerun()
+            st.caption("Your local time. Scheduled posts fire from this PC, so "
+                       "it needs to be on and online at that moment.")
+
+    # ---- Scheduled / failed / missed ---------------------------------------
+    st.divider()
+    st.subheader("Scheduled")
+    upcoming = posts_ledger.scheduled()
+    if not upcoming:
+        st.caption("Nothing scheduled.")
+    for r in upcoming:
+        with st.expander("%s  -  %s" % (_local_label(r.get("scheduled_for")),
+                                        r["topic"][:70])):
+            st.write(r.get("text") or "")
+            if st.button("Cancel schedule", key="cx-%s" % r["id"]):
+                result = review.cancel_schedule(r["id"])
+                (st.success if result["ok"] else st.error)(result["msg"])
+                st.rerun()
+
+    # "publishing" means a run claimed the item and then died before it could
+    # record the outcome. It is listed here so it cannot silently disappear.
+    problems = (posts_ledger.by_status("failed") + posts_ledger.by_status("missed")
+                + posts_ledger.by_status("publishing"))
+    if problems:
+        st.subheader("Needs attention")
+        for r in problems:
+            st.warning("**%s** (%s): %s" % (r["id"], r["status"],
+                                            r.get("error") or "no detail"))
+            if r["status"] in ("failed", "publishing"):
+                st.caption(
+                    "Check your LinkedIn profile before requeuing this one. If "
+                    "the connection dropped after LinkedIn accepted the post, it "
+                    "may already be live, and requeuing would post it twice."
+                )
+            if st.button("Put back in queue", key="rq-%s" % r["id"]):
+                result = review.requeue_item(r["id"])
+                (st.success if result["ok"] else st.error)(result["msg"])
+                if result["ok"]:
                     st.rerun()
 
 with tab_drafts:

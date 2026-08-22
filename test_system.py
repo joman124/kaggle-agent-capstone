@@ -61,6 +61,51 @@ class TestPostingPolicy(unittest.TestCase):
         gate = posting_policy.can_post_now(now=now, max_per_day=3, ledger=ledger)
         self.assertFalse(gate["allowed"])
 
+    def test_cadence_holds_at_every_hour_of_the_day(self):
+        """The cap must not depend on what time it is asked. It used to: with
+        a UTC-calendar-date counter, posts made 5 hours ago fell on the
+        previous date whenever 'now' was just past midnight UTC, so the count
+        read zero and the limit silently stopped applying between 00:00 and
+        05:00 UTC -- late afternoon and evening in the US."""
+        for hour in range(24):
+            now = datetime(2026, 7, 27, hour, 30, tzinfo=timezone.utc)
+            ledger = [{"status": "posted",
+                       "posted_at": (now - timedelta(hours=5)).isoformat()}
+                      for _ in range(3)]
+            gate = posting_policy.can_post_now(now=now, max_per_day=3, ledger=ledger)
+            self.assertFalse(gate["allowed"],
+                             "cap leaked at %02d:30 UTC" % hour)
+
+    def test_cadence_cannot_be_reset_by_crossing_midnight_utc(self):
+        """Three posts before the boundary must still block just after it."""
+        midnight = datetime(2026, 7, 27, 0, 0, tzinfo=timezone.utc)
+        ledger = [{"status": "posted",
+                   "posted_at": (midnight - timedelta(minutes=m)).isoformat()}
+                  for m in (30, 60, 90)]
+        gate = posting_policy.can_post_now(now=midnight + timedelta(minutes=5),
+                                           max_per_day=3, min_hours=0,
+                                           ledger=ledger)
+        self.assertFalse(gate["allowed"])
+
+    def test_cadence_releases_once_posts_age_out_of_the_window(self):
+        now = datetime(2026, 7, 27, 12, 0, tzinfo=timezone.utc)
+        ledger = [{"status": "posted",
+                   "posted_at": (now - timedelta(hours=25)).isoformat()}
+                  for _ in range(3)]
+        gate = posting_policy.can_post_now(now=now, max_per_day=3, min_hours=0,
+                                           ledger=ledger)
+        self.assertTrue(gate["allowed"])
+
+    def test_cadence_survives_a_naive_timestamp(self):
+        """A naive timestamp used to crash the guard on comparison, which would
+        have taken out cadence control altogether rather than failing closed."""
+        now = datetime(2026, 7, 27, 12, 0, tzinfo=timezone.utc)
+        ledger = [{"status": "posted",
+                   "posted_at": (now - timedelta(hours=1)).replace(tzinfo=None).isoformat()}
+                  for _ in range(3)]
+        gate = posting_policy.can_post_now(now=now, max_per_day=3, ledger=ledger)
+        self.assertFalse(gate["allowed"])
+
     def test_cadence_min_spacing(self):
         now = datetime.now(timezone.utc)
         ledger = [{"status": "posted", "posted_at": (now - timedelta(minutes=30)).isoformat()}]
@@ -125,6 +170,278 @@ class TestAnalytics(unittest.TestCase):
                                 metrics={"reactions": 2, "comments": 0})
             mult = analytics.performance_multipliers(path=path)
             self.assertGreater(mult["A"], mult["B"])
+
+
+class TestScheduling(unittest.TestCase):
+    """Scheduling is the part that can post without a human in the room, so
+    the failure modes matter more than the happy path."""
+
+    def _scheduled(self, path, offset_hours):
+        posts_ledger.add("topic", "body", "linkedin", path=path)
+        when = datetime.now(timezone.utc) + timedelta(hours=offset_hours)
+        posts_ledger.schedule("p0001", when.isoformat(), path=path)
+        return "p0001"
+
+    def test_future_post_is_not_due(self):
+        with TempLedger() as path:
+            self._scheduled(path, +2)
+            self.assertEqual(posts_ledger.due_scheduled(path=path), [])
+
+    def test_past_post_is_due(self):
+        with TempLedger() as path:
+            self._scheduled(path, -1)
+            due = posts_ledger.due_scheduled(path=path)
+            self.assertEqual([r["id"] for r in due], ["p0001"])
+
+    def test_substack_is_never_due_for_auto_posting(self):
+        with TempLedger() as path:
+            posts_ledger.add("topic", "body", "substack", path=path)
+            past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+            posts_ledger.schedule("p0001", past, path=path)
+            self.assertEqual(posts_ledger.due_scheduled(path=path), [])
+
+    def test_naive_timestamp_is_treated_as_utc_not_mis_compared(self):
+        with TempLedger() as path:
+            posts_ledger.add("topic", "body", "linkedin", path=path)
+            naive_future = (datetime.now(timezone.utc)
+                            + timedelta(hours=3)).replace(tzinfo=None).isoformat()
+            posts_ledger.schedule("p0001", naive_future, path=path)
+            self.assertEqual(posts_ledger.due_scheduled(path=path), [])
+
+    def test_unschedule_returns_it_to_the_queue(self):
+        with TempLedger() as path:
+            self._scheduled(path, +2)
+            posts_ledger.unschedule("p0001", path=path)
+            self.assertEqual(len(posts_ledger.by_status("queued", path=path)), 1)
+            self.assertEqual(posts_ledger.scheduled(path=path), [])
+
+
+class TestPublishDue(unittest.TestCase):
+    def setUp(self):
+        import publish_due
+        self.publish_due = publish_due
+
+    def _queue_due(self, path, hours_late=1):
+        posts_ledger.add("topic", "body", "linkedin", path=path)
+        when = datetime.now(timezone.utc) - timedelta(hours=hours_late)
+        posts_ledger.schedule("p0001", when.isoformat(), path=path)
+
+    def test_dry_run_does_not_consume_scheduled_posts(self):
+        """A dry run must leave plans intact -- otherwise going live later
+        would silently have eaten everything John scheduled."""
+        with TempLedger() as path:
+            self._queue_due(path)
+            summary = self.publish_due.publish_due(force_dry_run=True, path=path)
+            self.assertEqual(summary["previewed"], ["p0001"])
+            self.assertEqual(summary["posted"], [])
+            still = posts_ledger.by_status("scheduled", path=path)
+            self.assertEqual(len(still), 1)
+
+    def test_dry_run_does_not_consume_very_late_posts_either(self):
+        """The lateness check must not fire before the dry-run check. It used
+        to, so a stale item was marked 'missed' and written to disk during what
+        was supposed to be a side-effect-free preview."""
+        with TempLedger() as path:
+            self._queue_due(path, hours_late=self.publish_due.MAX_LATE_HOURS + 5)
+            summary = self.publish_due.publish_due(force_dry_run=True, path=path)
+            self.assertEqual(summary["previewed"], ["p0001"])
+            self.assertEqual(summary["missed"], [])
+            self.assertEqual(len(posts_ledger.by_status("scheduled", path=path)), 1)
+            self.assertEqual(posts_ledger.by_status("missed", path=path), [])
+
+    def test_publisher_resolving_to_dry_run_leaves_it_scheduled(self):
+        """If the two independent safety gates disagree, publish nothing."""
+        import linkedin_publisher
+        original = linkedin_publisher.post_text
+
+        def simulated(text, dry_run=None, first_comment=None):
+            return {"posted": False, "dry_run": True,
+                    "post_id": "dry-run-simulated", "actor": "urn:li:person:x"}
+
+        linkedin_publisher.post_text = simulated
+        try:
+            with TempLedger() as path:
+                self._queue_due(path)
+                summary = self.publish_due.publish_due(force_dry_run=False, path=path)
+                self.assertEqual(summary["posted"], [])
+                self.assertEqual(
+                    len(posts_ledger.by_status("scheduled", path=path)), 1)
+        finally:
+            linkedin_publisher.post_text = original
+
+    def test_very_late_post_is_missed_not_blasted_out(self):
+        with TempLedger() as path:
+            self._queue_due(path, hours_late=self.publish_due.MAX_LATE_HOURS + 5)
+            summary = self.publish_due.publish_due(force_dry_run=False, path=path)
+            self.assertEqual(summary["missed"], ["p0001"])
+            self.assertEqual(summary["posted"], [])
+            self.assertEqual(
+                posts_ledger.by_status("missed", path=path)[0]["id"], "p0001")
+
+    def test_api_failure_is_recorded_and_does_not_crash_the_batch(self):
+        import linkedin_publisher
+        original = linkedin_publisher.post_text
+
+        def boom(text, dry_run=None, first_comment=None):
+            raise SystemExit("token expired")
+
+        linkedin_publisher.post_text = boom
+        try:
+            with TempLedger() as path:
+                self._queue_due(path)
+                summary = self.publish_due.publish_due(force_dry_run=False, path=path)
+                self.assertEqual(summary["failed"], ["p0001"])
+                failed = posts_ledger.by_status("failed", path=path)[0]
+                self.assertIn("token expired", failed["error"])
+        finally:
+            linkedin_publisher.post_text = original
+
+    def test_live_run_posts_and_marks_the_ledger(self):
+        import linkedin_publisher
+        original = linkedin_publisher.post_text
+
+        def fake(text, dry_run=None, first_comment=None):
+            return {"posted": True, "dry_run": False,
+                    "post_id": "urn:li:share:999", "actor": "urn:li:person:x"}
+
+        linkedin_publisher.post_text = fake
+        try:
+            with TempLedger() as path:
+                self._queue_due(path)
+                summary = self.publish_due.publish_due(force_dry_run=False, path=path)
+                self.assertEqual(summary["posted"], ["p0001"])
+                posted = posts_ledger.by_status("posted", path=path)[0]
+                self.assertEqual(posted["urn"], "urn:li:share:999")
+        finally:
+            linkedin_publisher.post_text = original
+
+
+class TestReviewScheduling(unittest.TestCase):
+    """review.* resolves records through posts_ledger's module-level default
+    path, which is bound at import time -- reassigning LEDGER_PATH does NOT
+    redirect it. So these stub the lookup and the writer outright, which also
+    guarantees a test run can never touch the real memory/posts.json."""
+
+    def _patch(self, record):
+        import review
+        self.review = review
+        self.calls = []
+        self._orig_find = review._find
+        self._orig_schedule = posts_ledger.schedule
+        review._find = lambda rid: record
+        posts_ledger.schedule = lambda rid, when, path=None: self.calls.append((rid, when))
+        self.addCleanup(setattr, review, "_find", self._orig_find)
+        self.addCleanup(setattr, posts_ledger, "schedule", self._orig_schedule)
+
+    def test_substack_cannot_be_scheduled(self):
+        self._patch({"id": "p1", "platform": "substack", "status": "queued"})
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        result = self.review.schedule_item("p1", future)
+        self.assertFalse(result["ok"])
+        self.assertIn("Substack", result["msg"])
+        self.assertEqual(self.calls, [])
+
+    def test_already_posted_item_cannot_be_rescheduled(self):
+        self._patch({"id": "p1", "platform": "linkedin", "status": "posted"})
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        result = self.review.schedule_item("p1", future)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.calls, [])
+
+    def test_queued_linkedin_item_schedules(self):
+        self._patch({"id": "p1", "platform": "linkedin", "status": "queued"})
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        result = self.review.schedule_item("p1", future)
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(self.calls), 1)
+
+
+class TestPublishSettings(unittest.TestCase):
+    """This flag is the master safety switch, so its edge cases are the ones
+    that decide whether something posts publicly by accident."""
+
+    def setUp(self):
+        import publish_settings
+        self.ps = publish_settings
+        self.dir = tempfile.mkdtemp()
+        self.env = os.path.join(self.dir, ".env")
+        self._orig_env_path = self.ps.ENV_PATH
+        self._orig_repo = self.ps.REPO_DIR
+        self.ps.ENV_PATH = self.env
+        self.ps.REPO_DIR = self.dir
+        self._had = os.environ.pop(self.ps.KEY, None)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        self.ps.ENV_PATH = self._orig_env_path
+        self.ps.REPO_DIR = self._orig_repo
+        os.environ.pop(self.ps.KEY, None)
+        if self._had is not None:
+            os.environ[self.ps.KEY] = self._had
+
+    def _write(self, text):
+        with open(self.env, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def test_missing_env_file_is_never_live(self):
+        self.assertFalse(os.path.exists(self.env))
+        self.assertFalse(self.ps.is_live())
+
+    def test_stray_process_env_cannot_force_live_without_the_file(self):
+        os.environ[self.ps.KEY] = "false"
+        self.assertFalse(self.ps.is_live())
+
+    def test_absent_key_defaults_to_dry_run(self):
+        self._write("ANTHROPIC_API_KEY=x\n")
+        self.assertFalse(self.ps.is_live())
+
+    def test_only_explicit_false_is_live(self):
+        for value, expected in [("false", True), ("FALSE", True), (" false ", True),
+                                ("true", False), ("0", False), ("no", False),
+                                ("", False), ("maybe", False)]:
+            self._write("LINKEDIN_DRY_RUN=%s\n" % value)
+            self.assertEqual(self.ps.is_live(), expected,
+                             "value %r should give live=%s" % (value, expected))
+
+    def test_duplicate_keys_are_collapsed_so_ui_and_publisher_agree(self):
+        """python-dotenv honours the LAST definition. Rewriting only the first
+        would leave the UI saying DRY RUN while the background task posts."""
+        self._write("LINKEDIN_DRY_RUN=true\nOTHER=1\nLINKEDIN_DRY_RUN=false\n")
+        self.assertTrue(self.ps.is_live())          # last one wins on read
+        self.ps.set_live(False)
+        with open(self.env, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertEqual(body.count("LINKEDIN_DRY_RUN="), 1)
+        self.assertFalse(self.ps.is_live())
+        self.assertIn("OTHER=1", body)
+
+    def test_toggling_preserves_other_secrets(self):
+        self._write("LINKEDIN_ACCESS_TOKEN=abc123\n"
+                    "LINKEDIN_CLIENT_SECRET=shh\n"
+                    "LINKEDIN_DRY_RUN=true\n")
+        self.ps.set_live(True)
+        with open(self.env, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("LINKEDIN_ACCESS_TOKEN=abc123", body)
+        self.assertIn("LINKEDIN_CLIENT_SECRET=shh", body)
+        self.assertTrue(self.ps.is_live())
+
+
+class TestLedgerIds(unittest.TestCase):
+    def test_new_id_does_not_reuse_a_live_id_after_a_removal(self):
+        """len(records)+1 would reissue p0002 here, and update() patches only
+        the first match -- which could leave a posted record marked scheduled
+        and publish it twice."""
+        with TempLedger() as path:
+            for _ in range(3):
+                posts_ledger.add("t", "x", "linkedin", path=path)
+            records = posts_ledger.load(path)
+            del records[0]                      # p0001 removed, p0003 still live
+            posts_ledger.save(records, path)
+            fresh = posts_ledger.add("t", "x", "linkedin", path=path)
+            self.assertEqual(fresh["id"], "p0004")
+            ids = [r["id"] for r in posts_ledger.load(path)]
+            self.assertEqual(len(ids), len(set(ids)))
 
 
 if __name__ == "__main__":
