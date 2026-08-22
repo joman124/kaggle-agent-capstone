@@ -18,6 +18,7 @@ import posting_policy
 import safety
 import ranking
 import analytics
+import review
 
 
 class TempLedger:
@@ -442,6 +443,51 @@ class TestLedgerIds(unittest.TestCase):
             self.assertEqual(fresh["id"], "p0004")
             ids = [r["id"] for r in posts_ledger.load(path)]
             self.assertEqual(len(ids), len(set(ids)))
+
+
+class TestReviewEdit(unittest.TestCase):
+    """review.edit_item lets a human revise a queued draft before it posts.
+    review._find/posts_ledger.update/load all resolve their path dynamically
+    (path=None, defaulting to the current posts_ledger.LEDGER_PATH at call
+    time), so reassigning LEDGER_PATH in setUp does redirect them -- but
+    posts_ledger.add/save now default path to LEDGER_PATH's value at import
+    time (a real early-binding gotcha, see TestReviewScheduling above), so
+    a bare add() call here would silently write to the real
+    memory/posts.json instead of the temp file. Passing path= explicitly on
+    every add()/mark_posted() call below sidesteps that; review.edit_item()
+    itself is still called with no path, exercising the real code path."""
+    def setUp(self):
+        self._saved = posts_ledger.LEDGER_PATH
+        self.dir = tempfile.mkdtemp()
+        posts_ledger.LEDGER_PATH = os.path.join(self.dir, "posts.json")
+
+    def tearDown(self):
+        posts_ledger.LEDGER_PATH = self._saved
+
+    def test_edit_updates_queued_text(self):
+        posts_ledger.add("AI writes code", "old body", "linkedin",
+                         path=posts_ledger.LEDGER_PATH)
+        res = review.edit_item("p0001", "new body from the dashboard")
+        self.assertTrue(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "new body from the dashboard")
+
+    def test_edit_rejects_empty_text(self):
+        posts_ledger.add("topic", "old body", "linkedin",
+                         path=posts_ledger.LEDGER_PATH)
+        res = review.edit_item("p0001", "   ")
+        self.assertFalse(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "old body")
+
+    def test_cannot_edit_after_posted(self):
+        posts_ledger.add("topic", "live text", "linkedin",
+                         path=posts_ledger.LEDGER_PATH)
+        posts_ledger.mark_posted("p0001", "urn:li:share:9", path=posts_ledger.LEDGER_PATH)
+        res = review.edit_item("p0001", "sneaky change")
+        self.assertFalse(res["ok"])
+        self.assertEqual(posts_ledger.load()[0]["text"], "live text")
+
+    def test_edit_missing_id(self):
+        self.assertFalse(review.edit_item("p9999", "x")["ok"])
 
 
 if __name__ == "__main__":

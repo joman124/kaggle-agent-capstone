@@ -39,8 +39,9 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def load(path: str = LEDGER_PATH) -> list:
+def load(path: str = None) -> list:
     """Return the ledger as a list of records (empty list if none yet)."""
+    path = path or LEDGER_PATH
     if not os.path.exists(path):
         return []
     with open(path, "r", encoding="utf-8") as f:
@@ -116,9 +117,10 @@ def add(topic: str, text: str, platform: str, pillar: str = None,
     return record
 
 
-def update(record_id: str, path: str = LEDGER_PATH, **fields) -> dict:
+def update(record_id: str, path: str = None, **fields) -> dict:
     """Merge fields into one record by id. Returns the updated record, or None
     if the id was not found."""
+    path = path or LEDGER_PATH
     records = load(path)
     updated = None
     for r in records:
@@ -131,8 +133,9 @@ def update(record_id: str, path: str = LEDGER_PATH, **fields) -> dict:
     return updated
 
 
-def mark_posted(record_id: str, urn: str, path: str = LEDGER_PATH) -> dict:
-    return update(record_id, path=path, status="posted", urn=urn, posted_at=_now())
+def mark_posted(record_id: str, urn: str, path: str = None) -> dict:
+    return update(record_id, path=path or LEDGER_PATH, status="posted", urn=urn,
+                  posted_at=_now())
 
 
 def by_status(status: str, path: str = LEDGER_PATH) -> list:

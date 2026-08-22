@@ -8,6 +8,7 @@ before the brand speaks.
 Commands:
   python review.py list                 # show what is waiting
   python review.py show <id>            # print one item in full
+  python review.py edit <id> <text>     # replace the draft text before posting
   python review.py approve <id>         # post it live (LinkedIn) / mark done
   python review.py reject <id>          # drop it
 
@@ -16,9 +17,39 @@ LINKEDIN_DRY_RUN). Substack items cannot be auto-posted, so approving one just
 records it as done and reminds you to paste it into Substack.
 """
 
+import json
+import os
 import sys
+from datetime import datetime, timezone
 
 import posts_ledger
+
+EDIT_HISTORY_PATH = os.path.join("memory", "edit_history.json")
+
+
+def _log_edit(record_id: str, before: str, after: str) -> None:
+    """Append one edit event to memory/edit_history.json -- a plain record of
+    what John changed by hand before approving, so a repeated pattern across
+    edits can be turned into a permanent voice_learnings.py rule later (see
+    the Streamlit "Voice Rules" tab). Best-effort: a logging failure must
+    never block saving the actual edit."""
+    entry = {
+        "record_id": record_id,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "before": before,
+        "after": after,
+    }
+    try:
+        history = []
+        if os.path.exists(EDIT_HISTORY_PATH):
+            with open(EDIT_HISTORY_PATH, "r", encoding="utf-8") as fh:
+                history = json.load(fh)
+        history.append(entry)
+        os.makedirs("memory", exist_ok=True)
+        with open(EDIT_HISTORY_PATH, "w", encoding="utf-8") as fh:
+            json.dump(history, fh, indent=2)
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
 def _find(record_id: str):
@@ -67,6 +98,27 @@ def approve_item(record_id: str) -> dict:
     posts_ledger.update(record_id, status="posted")
     return {"ok": True, "posted": False, "manual": True,
             "msg": f"{record_id} marked done. Paste it into Substack yourself."}
+
+
+def edit_item(record_id: str, new_text: str) -> dict:
+    """Replace the draft text of one queued item. Editing is only allowed while
+    the item is still queued: once it is posted, its text is the record of what
+    actually went live and must not change. Returns a structured result dict so
+    the CLI and the UI can report the same way."""
+    record = _find(record_id)
+    if not record:
+        return {"ok": False, "msg": f"No item with id {record_id}."}
+    if record["status"] != "queued":
+        return {"ok": False,
+                "msg": f"{record_id} is '{record['status']}', not queued -- cannot edit."}
+    text = (new_text or "").strip()
+    if not text:
+        return {"ok": False, "msg": "Cannot save an empty post."}
+    if text == (record.get("text") or "").strip():
+        return {"ok": True, "unchanged": True, "msg": f"{record_id} unchanged."}
+    _log_edit(record_id, record.get("text") or "", text)
+    posts_ledger.update(record_id, text=text)
+    return {"ok": True, "msg": f"{record_id} updated."}
 
 
 def reject_item(record_id: str) -> dict:
@@ -152,6 +204,10 @@ def cmd_show(record_id: str) -> None:
     print(f"[REVIEW] No item with id {record_id}.")
 
 
+def cmd_edit(record_id: str, new_text: str) -> None:
+    print("[REVIEW] " + edit_item(record_id, new_text)["msg"])
+
+
 def cmd_approve(record_id: str) -> None:
     record = _find(record_id)
     result = approve_item(record_id)
@@ -174,6 +230,8 @@ def main(argv) -> None:
         cmd_list()
     elif cmd == "show" and arg:
         cmd_show(arg)
+    elif cmd == "edit" and arg:
+        cmd_edit(arg, " ".join(argv[2:]))
     elif cmd == "approve" and arg:
         cmd_approve(arg)
     elif cmd == "reject" and arg:

@@ -28,9 +28,11 @@ losing John's voice or the brand's judgment.
   keeps external links out of the post body for reach.
 - **Tests + CI** - `test_agents.py`, `test_system.py`, GitHub Actions.
 - **Dashboard** - `app.py` (Streamlit) surfaces it all: a Fast-reaction control
-  (draft+queue a topic, or auto find+queue), an **Approval Queue** tab
-  (approve/reject on screen), a **Performance** tab (per-pillar metrics + a
-  "Sync LinkedIn metrics" button), and engagement scores in the trace.
+  (draft+queue a topic, or auto find+queue), an **Approval Queue** tab where you
+  **edit each draft in place** and then approve -- Approve + post publishes
+  exactly what is in the box, so you can autopost everything from the dashboard
+  (also `python review.py edit <id> <text>`) -- a **Performance** tab (per-pillar
+  metrics + a "Sync LinkedIn metrics" button), and engagement scores in the trace.
 
 ## Next (not yet built)
 

@@ -349,6 +349,45 @@ See `ROADMAP.md` for the full picture. New, all pure-logic + unit-tested:
   manual/empty; a paste-in engagement form is a possible follow-up so the
   Analyst gets real numbers too.)
 
+- **Permanent voice-learning layer built (Aug 22).** Closes the gap flagged
+  right below in "Voice feedback still pending": editing a draft in the
+  Streamlit Approval Queue never changed future output, it only changed that
+  one post. New `voice_learnings.py` + `memory/voice_learnings.json` (a
+  plain JSON array, separate from the hand-tuned `voice_profile.py`) is a
+  store of permanent rules John adds himself, from the app, with no restart
+  and no code edit. Wired into the one place every drafting agent (Writer,
+  Substack Specialist, Viral) already shares -- `guardrails.draft_with_
+  guardrails()` -- two ways: (1) `learnings_prompt_block()` is appended to
+  `system_instruction` fresh on every call, so a new rule reaches the very
+  next draft; (2) `run_guardrails()` now also checks each rule's optional
+  `banned_snippets` (literal, like `BANNED_PHRASES`) and `regex_patterns`
+  (like `find_antithesis`) as a HARD fail, feeding the violated rule text
+  into the next revise attempt's prompt. Seeded with the first rule John
+  asked for: avoid negation-reversal statements ("it's not X, it's Y," "I
+  didn't X, I Y"), enforced with 5 regexes covering both frames (verified
+  against 5 positive and 4 negative controls, including a real
+  `REFERENCE_PASSAGES` sentence, before seeding). New "Voice Rules" tab in
+  `app.py` lists rules in effect and has a form to add a new one (rule text
+  + optional exact-phrase hard-blocks, no regex exposed in the UI -- regex
+  rules stay code-only, added the way the seed entry was). The same tab also
+  shows the last 10 entries from a new `memory/edit_history.json`:
+  `review.edit_item()` now logs every Approval-Queue edit's before/after
+  text (best-effort, never blocks the save on a logging failure), so a
+  repeated pattern in what John edits by hand can be read off and turned
+  into a rule above -- this is a manual "notice it, then write the rule"
+  step, not an automatic one, since auto-extracting rules from a single
+  edit risked overfitting the voice profile to one grumpy edit. Verified:
+  6 new unit tests in `test_agents.py` (seed rule loads, both negation
+  frames detected, clean text has no hits, prompt block renders, and
+  `run_guardrails()` fails on a hit) plus all 13 pre-existing tests still
+  pass (19/19). Also verified by stubbing the model-call layer and
+  `guardrails.judge_voice`: a negation-laced first draft was rejected by
+  both the existing antithesis check and the new learned-rule check, the
+  combined feedback (both messages) was fed into attempt 2's prompt, and
+  the revised draft passed clean. (Written and verified before this branch
+  merged with the Gemini -> Anthropic migration below; the wiring point,
+  `guardrails.draft_with_guardrails()`, is unchanged by that migration.)
+
 ## Known gotchas (current -- Claude / Anthropic)
 - Pure ASCII in every .py file (Windows non-UTF-8 save crashes on em-dash/curly).
   Still true, and the one gotcha below that survived the migration.
@@ -542,6 +581,9 @@ direction for the writeup, not a required deliverable -- it does not block
 Steps 9-12 below.
 
 ## Voice feedback still pending
-John has not yet given line-level feedback on whether the generated voice fully
-matches his. Worth getting before locking the Writer, since the voice profile
-propagates to every agent.
+John has not yet given extensive line-level feedback on whether the generated
+voice fully matches his. The mechanism for capturing it permanently now exists
+(see "Permanent voice-learning layer built" above) and carries one rule so
+far (negation-reversal statements). Worth adding more before locking the
+Writer, since both `voice_profile.py` and `voice_learnings.py` propagate to
+every agent.

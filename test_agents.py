@@ -14,6 +14,7 @@ import unittest
 from agents.orchestrator import route
 import engagement
 import guardrails
+import voice_learnings
 from voice_profile import PLATFORM_RULES
 
 VIRAL = PLATFORM_RULES["linkedin_viral"]
@@ -183,6 +184,42 @@ class TestBannedVocabulary(unittest.TestCase):
     def test_catches_vague_attribution_and_wrapup_openers(self):
         self.assertTrue(self._banned("Experts argue this is inevitable."))
         self.assertTrue(self._banned("Ultimately, the work changes shape."))
+
+
+class TestVoiceLearnings(unittest.TestCase):
+    """Covers the seeded L1 negation-reversal rule (memory/voice_learnings.json)
+    and its wiring into run_guardrails. Reads the real seeded file, same as
+    the guardrail tests above read the real voice_profile.py constants."""
+
+    def test_seed_rule_present(self):
+        learnings = voice_learnings.load_learnings()
+        self.assertTrue(any(e["id"] == "L1" for e in learnings))
+
+    def test_negation_reversal_detected(self):
+        hits = voice_learnings.check_learned_patterns(
+            "It's not about the deadline, it's about the fear underneath it.")
+        self.assertTrue(hits)
+
+    def test_first_person_negation_reversal_detected(self):
+        hits = voice_learnings.check_learned_patterns(
+            "I didn't lose my job, I lost the reason I got up for it.")
+        self.assertTrue(hits)
+
+    def test_clean_text_has_no_learned_hits(self):
+        hits = voice_learnings.check_learned_patterns(
+            "A developer told me the model writes his code now. He shows up anyway.")
+        self.assertFalse(hits)
+
+    def test_prompt_block_includes_rule_text(self):
+        block = voice_learnings.learnings_prompt_block()
+        self.assertIn("negation", block.lower())
+
+    def test_learned_negation_pattern_fails_run_guardrails(self):
+        result = guardrails.run_guardrails(
+            "I didn't fix the plan, I finally admitted it never worked.")
+        self.assertFalse(result["clean"])
+        self.assertTrue(result["learned_patterns"])
+
 
 if __name__ == "__main__":
     unittest.main()
