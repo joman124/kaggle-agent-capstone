@@ -470,17 +470,36 @@ with tab_queue:
         rid = r["id"]
         head = "[%s] %s" % (r["platform"], r["topic"])
         with st.expander(head[:100]):
-            st.write(r.get("text") or "")
+            # Editable: every button below saves whatever is in this box
+            # first (matching what you see is what publishes), and each
+            # save is logged to memory/edit_history.json for the Voice
+            # Rules tab -- so a pattern in what you change by hand can be
+            # turned into a permanent rule later.
+            edited = st.text_area(
+                "Edit before publishing",
+                value=r.get("text") or "",
+                height=220,
+                key="edit-%s" % rid,
+                label_visibility="collapsed",
+            )
+            if st.button("Save edits", key="sv-%s" % rid, width="stretch"):
+                res = review.edit_item(rid, edited)
+                (st.success if res["ok"] else st.error)(res["msg"])
+                st.rerun()
             st.divider()
 
             if r["platform"] != "linkedin":
-                # Substack: unchanged behaviour -- mark done, paste it yourself.
+                # Substack: mark done, paste it yourself.
                 done, rej = st.columns(2)
                 with done:
                     if st.button("Mark as done", key="ap-%s" % rid, width="stretch"):
-                        result = review.approve_item(rid)
-                        (st.success if result["ok"] else st.error)(result["msg"])
-                        st.rerun()
+                        saved = review.edit_item(rid, edited)
+                        if not saved["ok"]:
+                            st.error(saved["msg"])
+                        else:
+                            result = review.approve_item(rid)
+                            (st.success if result["ok"] else st.error)(result["msg"])
+                            st.rerun()
                 with rej:
                     if st.button("Reject", key="rj-%s" % rid, width="stretch"):
                         review.reject_item(rid)
@@ -503,9 +522,13 @@ with tab_queue:
                 if st.button(label, key="ap-%s" % rid, type="primary",
                              width="stretch",
                              disabled=not confirm or blocked):
-                    result = review.approve_item(rid)
-                    (st.success if result["ok"] else st.error)(result["msg"])
-                    st.rerun()
+                    saved = review.edit_item(rid, edited)
+                    if not saved["ok"]:
+                        st.error(saved["msg"])
+                    else:
+                        result = review.approve_item(rid)
+                        (st.success if result["ok"] else st.error)(result["msg"])
+                        st.rerun()
             with rej_col:
                 if st.button("Reject", key="rj-%s" % rid, width="stretch"):
                     review.reject_item(rid)
@@ -529,10 +552,14 @@ with tab_queue:
                     if posts_ledger._parse(when_utc) <= datetime.now(timezone.utc):
                         st.error("That time is in the past. Pick a future time.")
                     else:
-                        result = review.schedule_item(rid, when_utc)
-                        (st.success if result["ok"] else st.error)(result["msg"])
-                        if result["ok"]:
-                            st.rerun()
+                        saved = review.edit_item(rid, edited)
+                        if not saved["ok"]:
+                            st.error(saved["msg"])
+                        else:
+                            result = review.schedule_item(rid, when_utc)
+                            (st.success if result["ok"] else st.error)(result["msg"])
+                            if result["ok"]:
+                                st.rerun()
             st.caption("Your local time. Scheduled posts fire from this PC, so "
                        "it needs to be on and online at that moment.")
 
