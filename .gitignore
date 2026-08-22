@@ -13,6 +13,9 @@ logs/
 # Posts ledger / approval queue (runtime state; holds drafted content)
 memory/posts.json
 
+# Edit-diff log for the Voice Rules tab (runtime state; also written by tests)
+memory/edit_history.json
+
 # Python
 __pycache__/
 *.pyc
