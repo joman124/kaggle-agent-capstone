@@ -364,8 +364,8 @@ if cycle_btn:
 st.divider()
 
 # ---- Tabs: real state, no API calls ---------------------------------------
-tab_plan, tab_queue, tab_drafts, tab_perf, tab_trace = st.tabs(
-    ["This Week's Plan", "Approval Queue", "Drafts", "Performance", "Agent Trace"]
+tab_plan, tab_queue, tab_drafts, tab_perf, tab_voice, tab_trace = st.tabs(
+    ["This Week's Plan", "Approval Queue", "Drafts", "Performance", "Voice Rules", "Agent Trace"]
 )
 
 with tab_plan:
@@ -497,6 +497,77 @@ with tab_perf:
                 "Ranking multiplier": mult.get(pillar, 1.0),
             })
         st.dataframe(rows, width="stretch", hide_index=True)
+
+with tab_voice:
+    import voice_learnings
+
+    st.caption(
+        "Permanent feedback on how the agents should write. Every rule here is "
+        "injected into the system prompt for every future LinkedIn post, essay, "
+        "and reaction -- add a rule once and it applies to every draft from now "
+        "on, not just the one you are looking at. No API call needed to save one."
+    )
+
+    learnings = voice_learnings.load_learnings()
+    if not learnings:
+        st.info("No permanent voice rules yet. Add the first one below.")
+    else:
+        st.caption("%d rule(s) in effect." % len(learnings))
+        for entry in reversed(learnings):
+            enforced = entry.get("banned_snippets") or entry.get("regex_patterns")
+            tag = "hard-blocked, forces a redraft" if enforced else "prompt guidance"
+            with st.expander("%s -- %s (%s)" % (entry["id"], entry["date"], tag)):
+                st.write(entry["rule"])
+                if entry.get("banned_snippets"):
+                    st.caption("Exact phrases blocked: " + ", ".join(entry["banned_snippets"]))
+                if entry.get("regex_patterns"):
+                    st.caption("%d pattern(s) also force a redraft on a match."
+                               % len(entry["regex_patterns"]))
+
+    st.divider()
+    st.markdown("### Add a permanent rule")
+    with st.form("add_voice_rule", clear_on_submit=True):
+        rule_text = st.text_area(
+            "Rule (plain English)",
+            placeholder="e.g. Do not open a post by naming the pillar out loud.",
+        )
+        snippets = st.text_input(
+            "Also hard-block these exact phrases (comma-separated, optional)",
+            placeholder="e.g. at the end of the day, circle back",
+        )
+        submitted = st.form_submit_button("Save rule")
+    if submitted:
+        if not rule_text.strip():
+            st.error("Rule text cannot be empty.")
+        else:
+            snippet_list = [s.strip() for s in snippets.split(",") if s.strip()]
+            entry = voice_learnings.add_learning(rule_text.strip(), banned_snippets=snippet_list)
+            st.success("Saved as %s. It applies to every draft from now on." % entry["id"])
+            st.rerun()
+
+    st.divider()
+    st.markdown("### Recent manual edits")
+    st.caption(
+        "What you actually changed before approving a reaction in the Approval "
+        "Queue tab. Look for a pattern here, then write it up as a rule above."
+    )
+    edit_path = os.path.join("memory", "edit_history.json")
+    edits = []
+    if os.path.exists(edit_path):
+        try:
+            with open(edit_path, "r", encoding="utf-8") as fh:
+                edits = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            edits = []
+    if not edits:
+        st.info("No edits logged yet. Editing a queued item in Approval Queue logs it here.")
+    else:
+        for e in reversed(edits[-10:]):
+            with st.expander("%s -- %s" % (e.get("record_id", ""), e.get("date", ""))):
+                st.write("**Before**")
+                st.text(e.get("before", ""))
+                st.write("**After**")
+                st.text(e.get("after", ""))
 
 with tab_trace:
     trace = load_trace()

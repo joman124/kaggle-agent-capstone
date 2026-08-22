@@ -1,0 +1,16 @@
+[
+  {
+    "id": "L1",
+    "date": "2026-08-22",
+    "rule": "Avoid negation-reversal statements entirely -- 'it's not X, it's Y,' 'I didn't X, I Y,' and similar constructions that set up a negation just to pivot to its opposite. State the point once, plainly.",
+    "banned_snippets": [],
+    "regex_patterns": [
+      "\\bit'?s\\s+not\\b[^.!?]{0,60}?,\\s*it'?s\\b",
+      "\\bit\\s+is\\s+not\\b[^.!?]{0,60}?,\\s*it\\s+is\\b",
+      "\\bi\\s+didn'?t\\b[^.!?]{0,60}?,\\s*i\\s+\\w+",
+      "\\bi\\s+don'?t\\b[^.!?]{0,60}?,\\s*i\\s+\\w+",
+      "\\bi\\s+wasn'?t\\b[^.!?]{0,60}?,\\s*i\\s+was\\b"
+    ],
+    "source": "manual"
+  }
+]
